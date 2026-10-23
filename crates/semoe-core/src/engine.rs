@@ -57,11 +57,13 @@ pub struct Options {
     pub timeout_ms: u64,
     /// 한 번에 모아치기: `false`면 키뗌을 무시하고 타이머만으로 확정한다 (계획서 3.1 방안 C).
     pub use_keyup: bool,
-    /// 약어 사전. 옛한글을 직접 입력할 때는 끈다.
+    /// 약어 사전. 옛한글 모드에서는 이 값과 상관없이 꺼진다.
     pub abbreviations: bool,
+    /// 기호 조합(원본 `UserCompoTable`): 기호 두 개를 이어 치면 정해진 문자열이 된다 (`※` `△` → `가? `).
+    pub compose: bool,
     /// Caps Lock 순아래(Shift Lock). macOS에서는 Caps Lock을 한/영 전환에 쓰는 일이 많아 기본은 끈다.
     pub caps_lock_shift: bool,
-    /// 원본의 Scroll Lock 모드(숫자열 옛한글 등). macOS에는 Scroll Lock이 없어 옵션으로 둔다.
+    /// 옛한글 모드: 원본의 Scroll Lock 자리(숫자열 옛한글 등)를 쓰고, 약어를 끄고, Shift+Y·U를 방점으로 쓴다.
     pub old_hangul: bool,
 }
 
@@ -72,23 +74,38 @@ impl Default for Options {
             timeout_ms: 40,
             use_keyup: true,
             abbreviations: true,
+            compose: true,
             caps_lock_shift: false,
             old_hangul: false,
         }
     }
 }
 
+/// 옛한글 모드의 방점 (개발 규격 권장: Shift+Y, Shift+U). 원본 XML에는 없어 엔진이 넣는다.
+const SINGLE_DOT_TONE_MARK: char = '\u{302E}';
+const DOUBLE_DOT_TONE_MARK: char = '\u{302F}';
+
+/// 기호 확장 준비 단계 (Shift+J 뒤). 101~103이 1~3단계다.
+const STAGE_READY: u32 = 100;
+
 /// 키 하나를 자판 데이터로 해석한 결과.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Input {
     Unit(Unit),
-    /// 문자를 엔진이 넣는다.
-    Char(char),
-    /// 조합만 확정하고 키는 앱에 넘긴다 (QWERTY와 같은 문자, 엔진이 모르는 키, 수정키 조합).
+    /// 문자. `native`면 그 키의 QWERTY 문자 그대로라, 기호 조합에 쓰이지 않을 때는 앱에 넘긴다
+    /// (단축키·자동 반복이 자연스럽다).
+    Char {
+        ch: char,
+        native: bool,
+    },
+    /// 조합만 확정하고 키는 앱에 넘긴다 (엔진이 모르는 키, 수정키 조합).
     Pass,
     Backspace,
     Space,
-    /// 아무것도 하지 않는 자리, 또는 아직 구현하지 않은 명령(기호 확장 단계, Phase 4).
+    Escape,
+    /// 기호 확장 단계 지정 (`C1|100~103`)
+    Stage(u32),
+    /// 아무것도 하지 않는 자리 (`0`), 또는 알 수 없는 명령
     Ignore,
 }
 
@@ -102,6 +119,11 @@ pub struct Engine {
     pressed: BTreeSet<SemoeKey>,
     deadline: Option<u64>,
     pending_space: bool,
+    /// 기호 확장 단계 `T`. 키 하나를 처리하면 0으로 돌아간다(한 번짜리). 명령이나 `(T=n, …)`이 다시 정할 수 있다.
+    stage: u32,
+    /// 기호 조합 상태와, 그 상태에서 보여 줄 중간 문자열
+    compose_state: u32,
+    compose_interim: String,
 }
 
 impl Default for Engine {
@@ -124,7 +146,15 @@ impl Engine {
             pressed: BTreeSet::new(),
             deadline: None,
             pending_space: false,
+            stage: 0,
+            compose_state: 0,
+            compose_interim: String::new(),
         }
+    }
+
+    /// 지금의 기호 확장 단계 (0 = 평소, 100 = 준비, 101~103 = 1~3단계). 껍데기가 상태 표시에 쓸 수 있다.
+    pub fn stage(&self) -> u32 {
+        self.stage
     }
 
     pub fn handle_key(&mut self, ev: KeyEvent) -> Output {
@@ -136,7 +166,7 @@ impl Engine {
 
     pub fn on_timer(&mut self, now_ms: u64) -> Output {
         let commit = match self.deadline {
-            Some(d) if now_ms >= d => self.take(),
+            Some(d) if now_ms >= d => self.take_hangul(),
             _ => String::new(),
         };
         self.output(true, commit)
@@ -146,6 +176,7 @@ impl Engine {
     pub fn flush(&mut self) -> Output {
         let commit = self.take();
         self.pressed.clear();
+        self.stage = 0;
         self.output(true, commit)
     }
 
@@ -155,41 +186,64 @@ impl Engine {
         self.pressed.clear();
         self.deadline = None;
         self.pending_space = false;
+        self.stage = 0;
+        self.clear_compose();
     }
 
     fn chord(&self) -> bool {
         self.options.mode == Mode::Chord
     }
 
-    fn composing(&self) -> bool {
+    fn composing_hangul(&self) -> bool {
         !self.syllable.is_empty() || !self.units.is_empty()
     }
 
-    fn resolve(&self, ev: &KeyEvent) -> Input {
+    fn abbreviations(&self) -> bool {
+        self.options.abbreviations && !self.options.old_hangul
+    }
+
+    /// 키를 해석한다. 함께 돌려주는 값은 이 키를 처리한 뒤의 기호 확장 단계(`(T=n, …)`)다.
+    fn resolve(&self, ev: &KeyEvent) -> (Input, Option<u32>) {
         if ev.modifiers & (modifiers::CTRL | modifiers::ALT | modifiers::CMD) != 0 {
-            return Input::Pass;
+            return (Input::Pass, None);
         }
         match ev.key {
-            SemoeKey::BACKSPACE => return Input::Backspace,
-            SemoeKey::SPACE => return Input::Space,
+            SemoeKey::BACKSPACE => return (Input::Backspace, None),
+            SemoeKey::SPACE => return (Input::Space, None),
+            SemoeKey::ESCAPE => return (Input::Escape, None),
             _ => {}
         }
         let shift = ev.modifiers & modifiers::SHIFT != 0;
         let Some(ch) = ev.key.qwerty(shift) else {
-            return Input::Pass;
+            return (Input::Pass, None);
         };
+        if self.options.old_hangul && self.stage == 0 {
+            let mark = match ch {
+                'Y' => Some(SINGLE_DOT_TONE_MARK),
+                'U' => Some(DOUBLE_DOT_TONE_MARK),
+                _ => None,
+            };
+            if let Some(ch) = mark {
+                return (Input::Char { ch, native: false }, None);
+            }
+        }
         let state = KeyState {
-            stage: 0,
+            stage: self.stage,
             caps_lock: self.options.caps_lock_shift && ev.modifiers & modifiers::CAPS != 0,
             scroll_lock: self.options.old_hangul,
         };
         match self.kb.action(ch, &state) {
-            Some((DataAction::Unit { unit }, _)) => Input::Unit(*unit),
-            // 원래 그 키의 문자면 앱이 직접 처리하게 넘긴다(단축키·자동 반복이 자연스럽다).
-            Some((DataAction::Char { ch: c }, _)) if *c == ch => Input::Pass,
-            Some((DataAction::Char { ch: c }, _)) => Input::Char(*c),
-            Some((DataAction::Nothing | DataAction::Command { .. }, _)) => Input::Ignore,
-            None => Input::Pass,
+            Some((DataAction::Unit { unit }, set)) => (Input::Unit(*unit), set),
+            Some((DataAction::Char { ch: c }, set)) => (
+                Input::Char {
+                    ch: *c,
+                    native: *c == ch,
+                },
+                set,
+            ),
+            Some((DataAction::Command { group: 1, n }, _)) => (Input::Stage(*n), None),
+            Some((DataAction::Command { .. } | DataAction::Nothing, set)) => (Input::Ignore, set),
+            None => (Input::Pass, None),
         }
     }
 
@@ -197,17 +251,31 @@ impl Engine {
         let mut commit = String::new();
         // 타이머 이벤트가 늦게 와서 마감이 지났으면 먼저 확정한다.
         if self.deadline.is_some_and(|d| ev.time_ms >= d) {
-            commit += &self.take();
+            commit += &self.take_hangul();
         }
 
-        match self.resolve(&ev) {
-            Input::Backspace if self.composing() => {
+        let in_stage = self.stage != 0;
+        let (input, set_stage) = self.resolve(&ev);
+        // 기호 확장은 한 번짜리다: 명령이 단계를 정하지 않는 한, 키 하나를 처리하면 평소로 돌아간다.
+        self.stage = match input {
+            Input::Stage(n) => n,
+            _ => set_stage.unwrap_or(0),
+        };
+
+        match input {
+            Input::Escape if in_stage || !self.compose_interim.is_empty() => {
+                // 기호 확장·기호 조합을 취소한다.
+                self.stage = 0;
+                self.clear_compose();
+                self.output(true, commit)
+            }
+            Input::Backspace if self.composing_hangul() => {
                 if self.chord() {
                     self.units.pop();
                 } else {
                     self.syllable.undo(self.kb);
                 }
-                if self.composing() {
+                if self.composing_hangul() {
                     self.arm(ev.time_ms);
                 } else {
                     self.deadline = None;
@@ -215,13 +283,18 @@ impl Engine {
                 }
                 self.output(true, commit)
             }
-            Input::Space if self.chord() && self.composing() && !ev.is_repeat => {
+            Input::Backspace if !self.compose_interim.is_empty() || in_stage => {
+                self.clear_compose();
+                self.output(true, commit)
+            }
+            Input::Space if self.chord() && self.composing_hangul() && !ev.is_repeat => {
                 // 스페이스 모아치기: 음절과 함께 누른 Space는 확정할 때 공백으로 붙인다.
                 self.pending_space = true;
                 self.pressed.insert(ev.key);
                 self.output(true, commit)
             }
             Input::Unit(unit) => {
+                commit += &self.take_compose();
                 if !ev.is_repeat {
                     commit += &self.add(unit);
                     if self.chord() {
@@ -231,20 +304,54 @@ impl Engine {
                 }
                 self.output(true, commit)
             }
-            Input::Char(c) => {
+            Input::Char { ch, native } => {
+                commit += &self.take_hangul();
+                if self.options.compose && self.compose(ch, &mut commit) {
+                    return self.output(true, commit);
+                }
+                if native {
+                    self.output(false, commit)
+                } else {
+                    commit.push(ch);
+                    self.output(true, commit)
+                }
+            }
+            Input::Stage(_) | Input::Ignore => {
                 commit += &self.take();
-                commit.push(c);
                 self.output(true, commit)
             }
-            Input::Ignore => {
-                commit += &self.take();
-                self.output(true, commit)
-            }
-            Input::Pass | Input::Backspace | Input::Space => {
+            Input::Pass | Input::Backspace | Input::Space | Input::Escape => {
                 commit += &self.take();
                 self.output(false, commit)
             }
         }
+    }
+
+    /// 기호 조합에 문자 하나를 넣는다. 조합이 받으면 `true` (확정할 결과는 `commit`에 붙인다).
+    /// 지금 상태에 규칙이 없으면 중간 문자열을 확정하고 처음 상태에서 다시 본다.
+    fn compose(&mut self, ch: char, commit: &mut String) -> bool {
+        for attempt in 0..2 {
+            if let Some(rule) = self.kb.compose(self.compose_state, ch) {
+                match rule.next {
+                    Some(next) => {
+                        self.compose_state = next;
+                        self.compose_interim =
+                            rule.interim.clone().unwrap_or_else(|| ch.to_string());
+                    }
+                    None => {
+                        *commit += rule.result.as_deref().unwrap_or_default();
+                        self.clear_compose();
+                    }
+                }
+                return true;
+            }
+            if attempt == 0 && self.compose_state != 0 {
+                *commit += &self.take_compose();
+            } else {
+                break;
+            }
+        }
+        false
     }
 
     /// 낱자를 넣는다. 새 음절을 열어야 하면 앞 음절을 확정해 그 문자열을 돌려준다.
@@ -258,7 +365,7 @@ impl Engine {
         let new_syllable = unit.slot == Slot::Cho
             && (self.syllable.has(Slot::Jung) || self.syllable.has(Slot::Jong));
         if new_syllable || !self.syllable.add(self.kb, unit) {
-            commit = self.take();
+            commit = self.take_hangul();
             self.syllable.add(self.kb, unit);
         }
         commit
@@ -268,8 +375,9 @@ impl Engine {
         if !self.chord() || !self.pressed.remove(&ev.key) {
             return self.output(false, String::new());
         }
-        let commit = if self.options.use_keyup && self.pressed.is_empty() && self.composing() {
-            self.take()
+        let commit = if self.options.use_keyup && self.pressed.is_empty() && self.composing_hangul()
+        {
+            self.take_hangul()
         } else {
             String::new()
         };
@@ -277,12 +385,15 @@ impl Engine {
     }
 
     fn arm(&mut self, t: u64) {
-        self.deadline = self.chord().then_some(t + self.options.timeout_ms);
+        // 원본 타이머 조건 `T<100 ? 40 : 0`: 기호 확장 중에는 타이머를 쓰지 않는다
+        // (규격: Shift+J 뒤에는 일시적으로 이어치기처럼 동작).
+        self.deadline =
+            (self.chord() && self.stage < STAGE_READY).then_some(t + self.options.timeout_ms);
     }
 
-    /// 조합 중인 것을 화면에 보일 문자열로.
-    fn render(&self) -> String {
-        let abbr = self.options.abbreviations;
+    /// 조합 중인 한글을 화면에 보일 문자열로.
+    fn render_hangul(&self) -> String {
+        let abbr = self.abbreviations();
         if self.chord() {
             Syllable::segments(self.kb, &self.units)
                 .iter()
@@ -293,9 +404,9 @@ impl Engine {
         }
     }
 
-    /// 조합 중인 것을 꺼내고 상태를 비운다. 눌린 키 집합은 유지한다(날개셋의 `v`와 같음).
-    fn take(&mut self) -> String {
-        let mut s = self.render();
+    /// 조합 중인 한글을 꺼내고 비운다. 눌린 키 집합은 유지한다(날개셋의 `v`와 같음).
+    fn take_hangul(&mut self) -> String {
+        let mut s = self.render_hangul();
         if self.pending_space {
             s.push(' ');
         }
@@ -306,11 +417,30 @@ impl Engine {
         s
     }
 
+    /// 기호 조합 중간 문자열을 꺼내고 비운다.
+    fn take_compose(&mut self) -> String {
+        let s = std::mem::take(&mut self.compose_interim);
+        self.compose_state = 0;
+        s
+    }
+
+    fn clear_compose(&mut self) {
+        self.compose_state = 0;
+        self.compose_interim.clear();
+    }
+
+    /// 조합 중인 것을 모두 꺼낸다 (한글은 기호보다 먼저 확정되므로 둘이 함께 있지는 않다).
+    fn take(&mut self) -> String {
+        let mut s = self.take_hangul();
+        s += &self.take_compose();
+        s
+    }
+
     fn output(&self, consumed: bool, commit: String) -> Output {
         Output {
             consumed,
             commit,
-            marked: self.render(),
+            marked: self.render_hangul() + &self.compose_interim,
             deadline: self.deadline,
         }
     }

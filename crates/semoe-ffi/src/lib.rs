@@ -163,7 +163,7 @@ pub extern "C" fn semoe_reset(engine: *mut SemoeEngine) {
 /// 옵션 (알 수 없는 키나 값이면 `false`)
 /// - `mode`: `chord`(한 번에 모아치기) / `sequential`(이어치기·중종성 모아치기). 바꾸면 조합을 버린다.
 /// - `timeout_ms`: 1~1000
-/// - `keyup`, `abbrev`, `caps_lock_shift`, `old_hangul`: `on` / `off`
+/// - `keyup`, `abbrev`, `compose`, `caps_lock_shift`, `old_hangul`: `on` / `off`
 ///
 /// # Safety
 /// `key`와 `value`는 NUL로 끝나는 유효한 C 문자열이거나 NULL이어야 한다.
@@ -212,6 +212,7 @@ pub unsafe extern "C" fn semoe_set_option(
         }
         "keyup" => flag(value).map(|v| opts.use_keyup = v).is_some(),
         "abbrev" => flag(value).map(|v| opts.abbreviations = v).is_some(),
+        "compose" => flag(value).map(|v| opts.compose = v).is_some(),
         "caps_lock_shift" => flag(value).map(|v| opts.caps_lock_shift = v).is_some(),
         "old_hangul" => flag(value).map(|v| opts.old_hangul = v).is_some(),
         _ => false,
