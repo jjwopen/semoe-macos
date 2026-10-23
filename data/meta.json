@@ -1,0 +1,185 @@
+{
+  "_comment": "semoe-datagen이 만든 파일. 직접 고치지 말고 scripts/gen-data.sh로 다시 만든다.",
+  "counts": {
+    "abbreviations_checked_against_sheet": 1363,
+    "abbreviations_extra": 1,
+    "abbreviations_original": 1363,
+    "candidate_keys": 370,
+    "compose_rules": 178,
+    "keys": 94,
+    "mix_rules": 439,
+    "reachable_units": {
+      "cho": 76,
+      "jong": 52,
+      "jung": 50
+    }
+  },
+  "modes": {
+    "chord": {
+      "automata": [
+        {
+          "state": "0",
+          "value": "A|B|C ? 1 : 0"
+        },
+        {
+          "state": "1",
+          "value": "A|B|C ? 1 : 0"
+        }
+      ],
+      "extra": [
+        {
+          "attrs": {
+            "condition1": "0",
+            "condition2": "0",
+            "key": "1",
+            "value1": "0",
+            "value2": "BySyllable"
+          },
+          "name": "Bksp"
+        },
+        {
+          "attrs": {
+            "condition1": "0",
+            "condition2": "0",
+            "key": "2",
+            "value1": "BySyllable",
+            "value2": "ByUnitStep"
+          },
+          "name": "Bksp"
+        },
+        {
+          "attrs": {
+            "condition1": "0",
+            "condition2": "0",
+            "key": "3",
+            "value1": "0",
+            "value2": "BySyllable"
+          },
+          "name": "Bksp"
+        },
+        {
+          "attrs": {
+            "condition1": "0",
+            "condition2": "0",
+            "key": "4",
+            "value1": "0",
+            "value2": "BySyllable"
+          },
+          "name": "Bksp"
+        },
+        {
+          "attrs": {
+            "condition1": "T<100 ? 40 : 0",
+            "condition2": "s==2 ? (s=0, KY|0x20) : 0",
+            "key": "1",
+            "value1": "0",
+            "value2": "0"
+          },
+          "name": "Timer"
+        },
+        {
+          "attrs": {
+            "condition1": "0",
+            "condition2": "0",
+            "key": "2",
+            "value1": "-2",
+            "value2": "0"
+          },
+          "name": "Timer"
+        },
+        {
+          "attrs": {
+            "condition1": "0",
+            "condition2": "0",
+            "key": "3",
+            "value1": "-2",
+            "value2": "0"
+          },
+          "name": "Timer"
+        }
+      ],
+      "key_program": true
+    },
+    "sequential": {
+      "automata": [
+        {
+          "state": "0",
+          "value": "A ? 1 : B|C ? 2 : 0"
+        },
+        {
+          "state": "1",
+          "value": "A ? 1 : B|C ? 2 : 0"
+        },
+        {
+          "state": "2",
+          "value": "B|C ? 2 : 0"
+        }
+      ],
+      "extra": [
+        {
+          "attrs": {
+            "condition1": "0",
+            "condition2": "0",
+            "key": "1",
+            "value1": "0",
+            "value2": "BySyllable"
+          },
+          "name": "Bksp"
+        },
+        {
+          "attrs": {
+            "condition1": "0",
+            "condition2": "0",
+            "key": "2",
+            "value1": "BySyllable",
+            "value2": "ByUnitStep"
+          },
+          "name": "Bksp"
+        },
+        {
+          "attrs": {
+            "condition1": "0",
+            "condition2": "0",
+            "key": "3",
+            "value1": "0",
+            "value2": "BySyllable"
+          },
+          "name": "Bksp"
+        },
+        {
+          "attrs": {
+            "condition1": "0",
+            "condition2": "0",
+            "key": "4",
+            "value1": "0",
+            "value2": "BySyllable"
+          },
+          "name": "Bksp"
+        }
+      ],
+      "key_program": false
+    }
+  },
+  "source": {
+    "commit": "ea2a9298abe1ba4b01063a7cc9b3a484f04111b1",
+    "files": [
+      "세모이 (한 번에 모아치기).xml",
+      "세모이 (이어치기 & 중종성 모아치기).xml",
+      "세모이 자판 설명/세모이 자판 약어 (가나다순).xlsx"
+    ],
+    "license": "CC BY-SA 4.0",
+    "repository": "https://github.com/Sinseiki/Semo-e_keyboard"
+  },
+  "unverified_unit_names": [
+    "Cw",
+    "JJw",
+    "Jw",
+    "SSw",
+    "Sw",
+    "wC",
+    "wJ",
+    "wJJ",
+    "wS",
+    "wSS"
+  ]
+}

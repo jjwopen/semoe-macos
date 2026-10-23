@@ -1,0 +1,12 @@
+# 방안 C: 키뗌을 믿을 수 없는 환경에서는 타이머만으로 확정한다
+option keyup off
++k 0
++f 3
++s 6
+-k 20
+-f 21
+-s 22
+commit ""
+marked 간
+timer 46
+commit 간

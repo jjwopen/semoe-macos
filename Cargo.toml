@@ -1,0 +1,12 @@
+[workspace]
+resolver = "3"
+members = ["crates/semoe-core", "crates/semoe-datagen"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+license = "CC-BY-SA-4.0"
+
+[profile.release]
+# FFI 경계에서 catch_unwind로 panic을 막으므로 unwind를 유지한다 (계획서 4.2).
+panic = "unwind"

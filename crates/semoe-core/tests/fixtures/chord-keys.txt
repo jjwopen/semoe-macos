@@ -1,0 +1,63 @@
+# 자동 반복, 수정키, Space, Backspace
+
+# 자동 반복은 무시한다
++k 0
++k 30 repeat
+marked ㄱ
+# Return은 확정하고 앱에 넘긴다
++ret 35
+commit ㄱ
+passed ret
+-k 40
+
+# Cmd 조합은 확정하고 넘긴다 (Cmd+A)
++k 100
++a 105 cmd
+commit ㄱ
+passed a
+-k 110
+-a 110
+
+# Space 단독은 넘긴다
++space 200
+passed space
+-space 210
+
+# 스페이스 모아치기
++k 300
++f 301
++a 302
++space 303
+marked 강
+-k 320
+-f 320
+-a 320
+commit ""
+-space 321
+commit "강 "
+
+# Backspace는 낱자 하나씩 되돌리고, 다 지우면 앱에 넘긴다
++k 400
++f 401
++s 402
++bksp 403
+marked 가
++bksp 404
+marked ㄱ
++bksp 405
+marked ""
+deadline none
++bksp 406
+passed bksp
+-k 420
+-f 420
+-s 420
+commit ""
+
+# 어떤 순서로도 한 음절이 되지 않으면 들어온 순서대로 나눈다 (초ㄱ + 초ㅁ, 규칙 없음)
++k 500
++y 505
+marked ㄱㅁ
+-k 520
+-y 520
+commit ㄱㅁ

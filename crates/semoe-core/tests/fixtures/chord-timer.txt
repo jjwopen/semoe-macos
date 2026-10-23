@@ -1,0 +1,47 @@
+# 한 번에 모아치기: 키뗌·타이머 확정 (Phase 0 엔진 테스트에서 옮김)
+
+# 모든 키를 떼야 확정한다
++k 0
+marked ㄱ
+deadline 40
++f 5
+marked 가
+deadline 45
+-k 10
+commit ""
+-f 12
+commit 가
+deadline none
+
+# 키를 누른 채 40 ms가 지나면 타이머가 확정한다
++k 100
++f 105
+timer 144
+commit ""
+timer 145
+commit 가
+marked ""
+-k 200
+-f 200
+commit ""
+
+# 타이머가 늦게 와도 다음 keyDown이 마감을 넘겼으면 먼저 확정한다
++k 300
++f 305
++u 400       # 초ㄴ
+commit 가
+marked ㄴ
+-k 410
+-f 410
+-u 410
+commit ㄴ
+
+# 타이머가 확정한 뒤 다음 키는 새 음절이지만, 앞 키를 아직 누르고 있으면 그 키를 뗄 때까지 확정하지 않는다
++k 500
+timer 540
+commit ㄱ
++f 580
+-k 600
+commit ""
+-f 600
+commit ㅏ
