@@ -214,7 +214,8 @@ mod tests {
         assert_eq!(s.render(kb, true), "공격");
         assert!(s.undo(kb));
         assert_eq!(s.render(kb, true), "국가");
-        assert_eq!(s.render(kb, false), "ᄀᅠᆨ");
+        assert_eq!(s.render(kb, false), "ㄱㄱ");
+        assert_eq!(s.key(kb), "ᄀᅠᆨ"); // 약어 사전 키는 그대로 첫가끝 꼴
     }
 
     #[test]

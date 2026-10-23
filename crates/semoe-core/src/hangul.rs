@@ -39,8 +39,10 @@ pub fn compat(c: char) -> Option<char> {
 /// 조합 중인 음절을 화면에 보일 문자열로 만든다.
 ///
 /// - 현대 한글로 합쳐지면 완성형 한 글자 (`ᄀ ᅡ ᆫ` → `간`)
-/// - 낱자 하나뿐이고 현대 자모면 호환 자모 (`ᄀ` → `ㄱ`)
-/// - 그 밖(옛한글, 초성 없는 음절 등)은 채움 문자를 넣은 첫가끝 조합 (`ᄩ` → `ᄩᅠ`)
+/// - 합쳐지지 않지만 현대 자모뿐이면 호환 자모를 나열 (`ᄀ` → `ㄱ`, 중성+종성 `ᅵ ᆼ` → `ㅣㅇ`)
+/// - 옛한글 자모가 있으면 채움 문자를 넣은 첫가끝 조합 (`ᄩ` → `ᄩᅠ`). 옛한글은 이 꼴이라야 보인다.
+///
+/// 현대 자모까지 채움 문자 꼴로 내면 앱에 따라 채움 문자가 따로 보이거나 이상하게 합쳐진다 (Phase 3).
 pub fn display(cho: Option<char>, jung: Option<char>, jong: Option<char>) -> String {
     match (cho, jung, jong) {
         (None, None, None) => String::new(),
@@ -56,13 +58,19 @@ pub fn display(cho: Option<char>, jung: Option<char>, jong: Option<char>) -> Str
                         .to_string();
                 }
             }
-            conjoining(cho, jung, jong)
+            compat_all(cho, jung, jong).unwrap_or_else(|| conjoining(cho, jung, jong))
         }
-        (Some(c), None, None) | (None, Some(c), None) | (None, None, Some(c)) => {
-            compat(c).map_or_else(|| conjoining(cho, jung, jong), |c| c.to_string())
-        }
-        _ => conjoining(cho, jung, jong),
+        _ => compat_all(cho, jung, jong).unwrap_or_else(|| conjoining(cho, jung, jong)),
     }
+}
+
+/// 있는 자모가 모두 현대 자모면 호환 자모를 차례로 이은 문자열.
+fn compat_all(cho: Option<char>, jung: Option<char>, jong: Option<char>) -> Option<String> {
+    [cho, jung, jong]
+        .into_iter()
+        .flatten()
+        .map(compat)
+        .collect()
 }
 
 /// 채움 문자를 넣은 첫가끝 문자열. 약어 사전의 키도 이 꼴이다(초성 + 중성 또는 중성 채움 + 종성?).
@@ -96,10 +104,18 @@ mod tests {
     }
 
     #[test]
-    fn old_or_incomplete_syllables_use_fillers() {
+    fn incomplete_modern_syllables_are_compatibility_jamo() {
+        // 초성 없이 중성+종성: 채움 문자(U+115F)를 넣지 않는다
+        assert_eq!(display(None, Some('ᅵ'), Some('ᆼ')), "ㅣㅇ");
+        assert_eq!(display(None, Some('ᅡ'), Some('ᆫ')), "ㅏㄴ");
+        // 중성 없이 초성+종성 (약어가 없거나 꺼졌을 때)
+        assert_eq!(display(Some('ᄀ'), None, Some('ᆨ')), "ㄱㄱ");
+    }
+
+    #[test]
+    fn old_hangul_uses_fillers() {
         assert_eq!(display(Some('ᄩ'), None, None), "ᄩᅠ");
-        assert_eq!(display(Some('ᄀ'), None, Some('ᆨ')), "ᄀᅠᆨ");
-        assert_eq!(display(None, Some('ᅡ'), Some('ᆫ')), "ᅟᅡᆫ");
         assert_eq!(display(Some('ᄀ'), Some('ힼ'), None), "ᄀힼ");
+        assert_eq!(display(None, Some('ᆞ'), Some('ᆫ')), "ᅟᆞᆫ");
     }
 }

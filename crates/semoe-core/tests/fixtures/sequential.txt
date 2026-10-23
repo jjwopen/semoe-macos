@@ -32,6 +32,6 @@ commit 국가
 option abbrev off
 +k 900
 +x 1000
-marked ᄀᅠᆨ
+marked ㄱㄱ
 flush
-commit ᄀᅠᆨ
+commit ㄱㄱ
