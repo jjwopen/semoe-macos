@@ -9,6 +9,7 @@ import AppKit
 /// - kind: down/up/down-nomatch(IMK), tapdown/tapup/tapskip(KeyTap), flags, timer, activate/deactivate/option
 /// - lag_ms: 이벤트 발생 시각(NSEvent.timestamp)부터 입력기가 받은 시각까지
 /// - timer 행의 extra: 마감 시각 대비 실제 발화 지연(ms)
+/// - 키 행의 extra: consumed/pass와 엔진 출력의 글자 수(c=확정, m=조합 중)
 final class EventLog {
     static let shared = EventLog()
 
@@ -38,7 +39,8 @@ final class EventLog {
         ProcessInfo.processInfo.systemUptime * 1000
     }
 
-    func key(_ event: NSEvent, bundleID: String, consumed: Bool, kind kindOverride: String? = nil) {
+    func key(_ event: NSEvent, bundleID: String, consumed: Bool, kind kindOverride: String? = nil,
+             output: EngineHandle.Output? = nil) {
         let now = Self.nowMs()
         let eventMs = event.timestamp * 1000
         var kind: String
@@ -51,7 +53,12 @@ final class EventLog {
         }
         if let kindOverride { kind = kindOverride }
         write([fmt(now), kind, bundleID, String(event.keyCode), isRepeat, fmt(eventMs), fmt(now - eventMs),
-               consumed ? "consumed" : "pass"])
+               (consumed ? "consumed" : "pass") + (output.map(Self.shape) ?? "")])
+    }
+
+    /// 엔진 출력의 꼴: 확정·조합 문자열의 글자 수만 남긴다(내용은 남기지 않음).
+    static func shape(_ out: EngineHandle.Output) -> String {
+        " c=\(out.commit.count) m=\(out.marked.count)"
     }
 
     func timer(bundleID: String, deadlineMs: UInt64) {

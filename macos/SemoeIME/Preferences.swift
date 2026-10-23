@@ -27,6 +27,9 @@ enum Preferences {
         static let timeoutMs = "timeoutMs"
         static let abbreviations = "abbreviations"
         static let useKeyUp = "useKeyUp"
+        static let compose = "compose"
+        static let oldHangul = "oldHangul"
+        static let capsLockShift = "capsLockShift"
     }
 
     private static var defaults: UserDefaults { .standard }
@@ -58,6 +61,24 @@ enum Preferences {
         set { set(newValue, Key.useKeyUp) }
     }
 
+    /// 기호 조합: 기호 두 개를 이어 치면 정해진 문자열이 된다 (※ △ → 가? )
+    static var compose: Bool {
+        get { defaults.object(forKey: Key.compose) as? Bool ?? true }
+        set { set(newValue, Key.compose) }
+    }
+
+    /// 옛한글 모드: 숫자열 옛한글, 약어 끔, Shift+Y·U 방점 (원본의 Scroll Lock)
+    static var oldHangul: Bool {
+        get { defaults.object(forKey: Key.oldHangul) as? Bool ?? false }
+        set { set(newValue, Key.oldHangul) }
+    }
+
+    /// Caps Lock 순아래(Shift Lock). Caps Lock을 한/영 전환에 쓰고 있으면 겹친다.
+    static var capsLockShift: Bool {
+        get { defaults.object(forKey: Key.capsLockShift) as? Bool ?? false }
+        set { set(newValue, Key.capsLockShift) }
+    }
+
     private static func set(_ value: Any, _ key: String) {
         defaults.set(value, forKey: key)
         NotificationCenter.default.post(name: didChange, object: nil)
@@ -73,7 +94,11 @@ enum Preferences {
         engine.setOption("timeout_ms", String(timeoutMs))
         engine.setOption("abbrev", abbreviations ? "on" : "off")
         engine.setOption("keyup", keyUp ? "on" : "off")
-        return "mode=\(mode.rawValue) timeout=\(timeoutMs) abbrev=\(abbreviations ? "on" : "off") "
-            + "keyup=\(useKeyUp ? "on" : "off") tap=\(tap ? "on" : "off")"
+        engine.setOption("compose", compose ? "on" : "off")
+        engine.setOption("old_hangul", oldHangul ? "on" : "off")
+        engine.setOption("caps_lock_shift", capsLockShift ? "on" : "off")
+        func onOff(_ v: Bool) -> String { v ? "on" : "off" }
+        return "mode=\(mode.rawValue) timeout=\(timeoutMs) abbrev=\(onOff(abbreviations)) compose=\(onOff(compose)) "
+            + "old=\(onOff(oldHangul)) caps=\(onOff(capsLockShift)) keyup=\(onOff(useKeyUp)) tap=\(onOff(tap))"
     }
 }

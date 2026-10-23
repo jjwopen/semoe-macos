@@ -52,7 +52,8 @@ final class SemoeInputController: IMKInputController {
             feedTap(before, client: client)
             if let match { EventLog.shared.key(match, bundleID: bundleID, consumed: true, kind: "tapdown") }
             let out = feed(event, up: false, timestamp: match?.timestamp ?? event.timestamp, client: client)
-            EventLog.shared.key(event, bundleID: bundleID, consumed: out.consumed, kind: match == nil ? "down-nomatch" : "down")
+            EventLog.shared.key(event, bundleID: bundleID, consumed: out.consumed,
+                                kind: match == nil ? "down-nomatch" : "down", output: out)
             return out.consumed
         case .keyUp where tap:
             // 키뗌은 탭 기록에서 받는다.
@@ -60,7 +61,7 @@ final class SemoeInputController: IMKInputController {
             return false
         case .keyDown, .keyUp:
             let out = feed(event, up: event.type == .keyUp, timestamp: event.timestamp, client: client)
-            EventLog.shared.key(event, bundleID: bundleID, consumed: out.consumed)
+            EventLog.shared.key(event, bundleID: bundleID, consumed: out.consumed, output: out)
             return out.consumed
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             // 커서를 옮기기 전에 조합을 확정한다. 이벤트는 앱에 그대로 넘긴다.
@@ -88,7 +89,7 @@ final class SemoeInputController: IMKInputController {
         for e in events {
             if e.type == .keyUp {
                 let out = feed(e, up: true, timestamp: e.timestamp, client: client)
-                EventLog.shared.key(e, bundleID: bundleID, consumed: out.consumed, kind: "tapup")
+                EventLog.shared.key(e, bundleID: bundleID, consumed: out.consumed, kind: "tapup", output: out)
             } else {
                 EventLog.shared.key(e, bundleID: bundleID, consumed: false, kind: "tapskip")
             }
@@ -184,9 +185,15 @@ final class SemoeInputController: IMKInputController {
             menu.addItem(item)
         }
         menu.addItem(.separator())
-        let abbr = NSMenuItem(title: "약어 사용", action: #selector(toggleAbbreviations(_:)), keyEquivalent: "")
-        abbr.state = Preferences.abbreviations ? .on : .off
-        menu.addItem(abbr)
+        for (title, on, action) in [
+            ("약어 사용", Preferences.abbreviations, #selector(toggleAbbreviations(_:))),
+            ("기호 조합 사용", Preferences.compose, #selector(toggleCompose(_:))),
+            ("옛한글 모드", Preferences.oldHangul, #selector(toggleOldHangul(_:))),
+        ] {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.state = on ? .on : .off
+            menu.addItem(item)
+        }
         if !KeyTap.shared.isRunning {
             menu.addItem(NSMenuItem(title: "키뗌 감지 꺼짐 (입력 모니터링 권한 필요)", action: nil, keyEquivalent: ""))
         }
@@ -209,6 +216,14 @@ final class SemoeInputController: IMKInputController {
 
     @objc func toggleAbbreviations(_ sender: Any?) {
         Preferences.abbreviations.toggle()
+    }
+
+    @objc func toggleCompose(_ sender: Any?) {
+        Preferences.compose.toggle()
+    }
+
+    @objc func toggleOldHangul(_ sender: Any?) {
+        Preferences.oldHangul.toggle()
     }
 
     override func showPreferences(_ sender: Any!) {
