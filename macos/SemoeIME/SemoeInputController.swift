@@ -10,6 +10,14 @@ final class SemoeInputController: IMKInputController {
     private var bridge = ClientBridge()
     private lazy var timer = CommitTimer { [weak self] deadline in self?.timerFired(deadline) }
     private var observer: NSObjectProtocol?
+    /// 마지막으로 이벤트를 보낸 클라이언트. 키 이벤트 밖(탭 키뗌, 타이머)에서 글자를 넣을 때 쓴다.
+    /// `client()`는 컨트롤러가 처음 받은 클라이언트라, 입력기를 다시 띄운 직후에는 실제로 키를 보내는
+    /// 세션과 다를 수 있다. 그쪽으로 넣은 확정 문자열은 앱에 닿지 않았다 (Phase 3, Safari `ㅣㅇ` → `ㅣ`).
+    private var currentClient: IMKTextInput?
+
+    private var activeClient: IMKTextInput? {
+        currentClient ?? client()
+    }
 
     override init!(server: IMKServer!, delegate: Any!, client inputClient: Any!) {
         super.init(server: server, delegate: delegate, client: inputClient)
@@ -31,6 +39,7 @@ final class SemoeInputController: IMKInputController {
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let event, let client = sender as? IMKTextInput else { return false }
+        currentClient = client
         let bundleID = client.bundleIdentifier() ?? "?"
         let tap = KeyTap.shared.isRunning
         switch event.type {
@@ -69,7 +78,7 @@ final class SemoeInputController: IMKInputController {
     /// 탭 스레드가 새 이벤트를 기록할 때마다 불린다. 짝을 기다리는 keyDown 앞까지만 처리한다.
     func drainKeyTap() {
         let events = KeyTap.shared.takeReady()
-        guard !events.isEmpty, let client = client() else { return }
+        guard !events.isEmpty, let client = activeClient else { return }
         feedTap(events, client: client)
     }
 
@@ -103,6 +112,7 @@ final class SemoeInputController: IMKInputController {
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
+        currentClient = sender as? IMKTextInput
         KeyTap.shared.target = self
         KeyTap.shared.start()
         EventLog.shared.note("activate", bundleID: Self.bundleID(sender), Preferences.apply(to: engine))
@@ -112,6 +122,7 @@ final class SemoeInputController: IMKInputController {
         flush(sender)
         if KeyTap.shared.target === self { KeyTap.shared.target = nil }
         EventLog.shared.note("deactivate", bundleID: Self.bundleID(sender))
+        currentClient = nil
         super.deactivateServer(sender)
     }
 
@@ -131,7 +142,7 @@ final class SemoeInputController: IMKInputController {
 
     private func preferencesChanged() {
         // 입력 방식을 바꾸면 엔진이 조합을 버리므로 먼저 확정한다.
-        if let client = client() {
+        if let client = activeClient {
             apply(engine.flush(), to: client)
         }
         EventLog.shared.note("option", bundleID: "-", Preferences.apply(to: engine))
@@ -145,7 +156,7 @@ final class SemoeInputController: IMKInputController {
     }
 
     private func timerFired(_ deadlineMs: UInt64) {
-        guard let client = client() else { return timer.cancel() }
+        guard let client = activeClient else { return timer.cancel() }
         // 마감 전에 눌렸지만 IMK가 아직 넘기지 않은 keyDown이 있으면 그 키도 이 음절에 속한다.
         // 앱이 keyDown을 수십 ms 늦게 넘기는 경우가 있어(Phase 0), 도착할 때까지 확정을 미룬다.
         if let pending = KeyTap.shared.oldestPendingDownMs(), pending < Double(deadlineMs) {
