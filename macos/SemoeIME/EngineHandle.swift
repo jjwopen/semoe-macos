@@ -24,7 +24,7 @@ final class EngineHandle {
     func handleKey(keyCode: UInt16, up: Bool, flags: NSEvent.ModifierFlags, isRepeat: Bool, timeMs: UInt64) -> Output {
         let ev = SemoeKeyEvent(
             key: KeyMapper.key(for: keyCode),
-            action: up ? SEMOE_KEY_UP : SEMOE_KEY_DOWN,
+            action: SemoeKeyAction(up ? SEMOE_KEY_UP : SEMOE_KEY_DOWN),
             modifiers: KeyMapper.modifiers(flags),
             is_repeat: isRepeat,
             time_ms: timeMs

@@ -24,11 +24,11 @@ enum KeyMapper {
 
     static func modifiers(_ flags: NSEvent.ModifierFlags) -> UInt32 {
         var m: UInt32 = 0
-        if flags.contains(.shift) { m |= SEMOE_MOD_SHIFT }
-        if flags.contains(.capsLock) { m |= SEMOE_MOD_CAPS }
-        if flags.contains(.control) { m |= SEMOE_MOD_CTRL }
-        if flags.contains(.option) { m |= SEMOE_MOD_ALT }
-        if flags.contains(.command) { m |= SEMOE_MOD_CMD }
+        if flags.contains(.shift) { m |= UInt32(SEMOE_MOD_SHIFT) }
+        if flags.contains(.capsLock) { m |= UInt32(SEMOE_MOD_CAPS) }
+        if flags.contains(.control) { m |= UInt32(SEMOE_MOD_CTRL) }
+        if flags.contains(.option) { m |= UInt32(SEMOE_MOD_ALT) }
+        if flags.contains(.command) { m |= UInt32(SEMOE_MOD_CMD) }
         return m
     }
 }

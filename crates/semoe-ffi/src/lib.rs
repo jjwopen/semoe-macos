@@ -1,4 +1,5 @@
-//! 세모이 엔진 C ABI (계획서 4.2). 헤더는 `include/semoe.h`.
+//! 세모이 엔진 C ABI (계획서 4.2). 헤더 `include/semoe.h`는 cbindgen이 이 파일에서 만든다
+//! (`scripts/build-rust-universal.sh`, 설정 `cbindgen.toml`).
 //!
 //! - 반환하는 문자열은 엔진이 소유하며 같은 엔진에 대한 다음 호출 전까지만 유효하다.
 //! - 모든 함수는 panic을 잡아 키를 앱에 넘기는 출력(`consumed = false`)으로 바꾼다.
@@ -9,9 +10,19 @@ use std::ptr;
 
 use semoe_core::{Engine, KeyAction, KeyEvent, Mode, Output, SemoeKey};
 
-pub const SEMOE_KEY_DOWN: u32 = 0;
-pub const SEMOE_KEY_UP: u32 = 1;
+/// 키 동작 (`SEMOE_KEY_DOWN`, `SEMOE_KEY_UP`)
+pub type SemoeKeyAction = u32;
+pub const SEMOE_KEY_DOWN: SemoeKeyAction = 0;
+pub const SEMOE_KEY_UP: SemoeKeyAction = 1;
 
+// 수정키 비트. semoe_core::key::modifiers와 같은 값이다(테스트로 확인).
+pub const SEMOE_MOD_SHIFT: u32 = 1 << 0;
+pub const SEMOE_MOD_CAPS: u32 = 1 << 1;
+pub const SEMOE_MOD_CTRL: u32 = 1 << 2;
+pub const SEMOE_MOD_ALT: u32 = 1 << 3;
+pub const SEMOE_MOD_CMD: u32 = 1 << 4;
+
+/// 엔진 인스턴스 (불투명). 입력 세션마다 하나씩 만든다.
 pub struct SemoeEngine {
     engine: Engine,
     commit: CString,
@@ -21,19 +32,26 @@ pub struct SemoeEngine {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct SemoeKeyEvent {
+    /// USB HID usage (Keyboard 페이지). 0이면 엔진이 모르는 키
     pub key: u16,
-    pub action: u32,
+    pub action: SemoeKeyAction,
+    /// `SEMOE_MOD_*`
     pub modifiers: u32,
     pub is_repeat: bool,
+    /// 단조 증가 시각 (ms)
     pub time_ms: u64,
 }
 
 #[repr(C)]
 #[derive(Debug)]
 pub struct SemoeOutput {
+    /// false면 키를 앱에 그대로 넘긴다. commit은 그보다 먼저 넣는다.
     pub consumed: bool,
+    /// 확정 문자열(UTF-8). 없으면 NULL. 다음 호출 전까지만 유효하다.
     pub commit: *const c_char,
+    /// 조합 중 문자열(UTF-8). 빈 문자열이면 조합 없음. 다음 호출 전까지만 유효하다.
     pub marked: *const c_char,
+    /// 이 시각(ms)에 semoe_on_timer를 불러야 한다. -1이면 타이머 해제.
     pub deadline_ms: i64,
 }
 
@@ -233,6 +251,21 @@ mod tests {
         assert_eq!(s(out.marked).as_deref(), Some(""));
         assert_eq!(out.deadline_ms, -1);
         unsafe { semoe_engine_free(e) };
+    }
+
+    #[test]
+    fn modifier_bits_match_core() {
+        use semoe_core::key::modifiers as m;
+        assert_eq!(
+            [
+                SEMOE_MOD_SHIFT,
+                SEMOE_MOD_CAPS,
+                SEMOE_MOD_CTRL,
+                SEMOE_MOD_ALT,
+                SEMOE_MOD_CMD
+            ],
+            [m::SHIFT, m::CAPS, m::CTRL, m::ALT, m::CMD]
+        );
     }
 
     #[test]

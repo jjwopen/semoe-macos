@@ -1,0 +1,16 @@
+# include/semoe.h 생성 설정. scripts/build-rust-universal.sh가 쓴다.
+language = "C"
+include_guard = "SEMOE_H"
+cpp_compat = true
+documentation = true
+documentation_style = "c99"
+autogen_warning = "// cbindgen이 crates/semoe-ffi/src/lib.rs에서 만든 파일. 직접 고치지 말 것."
+sys_includes = ["stdbool.h", "stdint.h"]
+no_includes = true
+style = "type"
+usize_is_size_t = true
+
+# 상수는 C에서 #define으로 나오고 Swift는 이를 Int32로 가져온다. Swift 쪽에서 UInt32(...)로 바꿔 쓴다.
+
+[export]
+include = ["SemoeKeyEvent", "SemoeOutput"]
