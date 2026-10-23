@@ -1,0 +1,4 @@
+module SemoeFFI {
+    header "semoe.h"
+    export *
+}

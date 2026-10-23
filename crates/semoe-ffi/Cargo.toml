@@ -1,0 +1,12 @@
+[package]
+name = "semoe-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "세모이 엔진 C ABI"
+
+[lib]
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+semoe-core = { path = "../semoe-core" }

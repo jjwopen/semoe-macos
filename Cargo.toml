@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/semoe-core", "crates/semoe-datagen"]
+members = ["crates/semoe-core", "crates/semoe-datagen", "crates/semoe-ffi"]
 
 [workspace.package]
 version = "0.0.1"
