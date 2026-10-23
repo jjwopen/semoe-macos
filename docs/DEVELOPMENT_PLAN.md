@@ -338,15 +338,21 @@ flush():
 - 기호 확장 단계 명령(`C1|100~103`, Shift+J 등)은 Phase 4까지 조합만 확정하고 무시한다. 조건의 날개셋 내부 플래그 `E`·`F`는 뜻을 확인하지 못해 꺼진 것으로 본다.
 - 실제 앱 확인: 합성 키로 Safari 6회, Chrome 3회 중 8회가 기대값과 일치했다. 재설치 직후 첫 회 1번은 Safari에서 `가ㅇ`이 `강`으로 나왔는데, 엔진은 같은 이벤트로 `가ㅇ`을 낸다(픽스처 `chord-quick-release.txt`). 입력기가 앱에 글자를 넣는 쪽 문제로 보고 Phase 3 호환성 항목으로 넘긴다.
 
-### Phase 3 — FFI 및 macOS 입력기 통합 (2~2.5주)
+### Phase 3 — FFI 및 macOS 입력기 통합 (2~2.5주) ✅
 
-- [ ] `semoe-ffi`: 4.2의 C ABI 구현, `cbindgen`으로 헤더 생성, Swift module map
-- [ ] 빌드 스크립트: `cargo build --release`를 두 타깃(`aarch64-apple-darwin`, `x86_64-apple-darwin`)으로 돌리고 `lipo`로 합침 → XcodeGen `preBuildScripts`에서 호출
-- [ ] `SemoeInputController`: keyCode → `SemoeKey` 변환, marked text 갱신, 확정 시점 처리, `CommitTimer`
-- [ ] 포커스 이동·마우스 클릭·앱 전환 시 `semoe_flush`, 수정키 조합 통과
-- [ ] 입력 방식 메뉴 전환(한 번에 모아치기 / 이어치기·중종성 모아치기, 엔진 `mode` 옵션), 약어 on/off, 설정 저장(`UserDefaults` → `semoe_set_option`), 타이머 ms 슬라이더(20~100, 5 단위)
-- [ ] 재설치·앱 활성화 직후 첫 타건 불안정 조사 (Phase 0의 늦은 IMK keyDown, Phase 2의 Safari `가ㅇ`→`강` 1회)
-- [ ] 앱 호환성 매트릭스 작성 및 앱별 우회 처리 (우회 로직이 입력 판단이면 엔진 옵션으로 내린다)
+- [x] `semoe-ffi`: 4.2의 C ABI 구현, `cbindgen`으로 헤더 생성, Swift module map
+  - C 헤더의 정수 상수는 `#define`으로 나오고 Swift는 이를 `Int32`로 가져온다. 그래서 Swift 쪽에서 `UInt32(...)`로 바꿔 쓴다. cbindgen의 `allow_static_const`는 C++ 모드에서만 적용된다.
+- [x] 빌드 스크립트: `cargo build --release`를 두 타깃(`aarch64-apple-darwin`, `x86_64-apple-darwin`)으로 돌리고 `lipo`로 합침. 헤더 생성도 같은 스크립트가 한다(`CHECK_HEADER=1`이면 최신인지만 확인).
+  - **XcodeGen은 쓰지 않는다.** Xcode 없이 `swiftc`를 아키텍처별로 돌리고 `lipo`로 합친다(`scripts/build-macos.sh`). 의존성이 없고 CI에서도 단순하다.
+- [x] `SemoeInputController`: keyCode → `SemoeKey` 변환(`KeyMapper`), marked text 갱신(`ClientBridge`), 확정 타이머(`CommitTimer`), 설정(`Preferences`)
+- [x] 포커스 이동·마우스 클릭·앱 전환 시 `semoe_flush`, 수정키 조합 통과
+  - 마우스 버튼 이벤트를 받아 조합 중이면 먼저 확정하고, 이벤트는 앱에 넘긴다.
+- [x] 입력 방식 메뉴 전환(한 번에 모아치기 / 이어치기·중종성 모아치기), 약어 on/off, 설정 저장(`UserDefaults` → `semoe_set_option`), 타이머 ms 슬라이더(20~100, 5 단위, 환경설정 창)
+- [x] 재설치·앱 활성화 직후 첫 타건 불안정 조사
+  - **Safari `가ㅇ`→`강`의 원인은 탭 대상 오류였다.** Safari와 `com.apple.Keyboard-Settings.extension` 두 입력 세션이 동시에 활성화되어 있었다. 탭은 마지막으로 활성화된 세션으로 키뗌을 보냈기 때문에, 키뗌 27개가 모두 다른 세션으로 갔다. 이제는 IMK keyDown을 마지막으로 받은 컨트롤러를 대상으로 삼는다.
+  - 재설치 직후 이미 열린 앱에서 영문이 들어가는 것은, 앱의 입력 세션이 이전 프로세스에 묶여 있어서다. 개발 중에만 생긴다.
+  - 입력기가 꺼져 있는 동안 탭 기록이 쌓이던 문제도 고쳤다(2초 넘은 기록은 버림).
+- [x] 앱 호환성 매트릭스 작성 및 앱별 우회 처리 → [`COMPATIBILITY.md`](COMPATIBILITY.md). 우회가 필요한 앱은 아직 없다. 터미널·IDE·문서 앱은 직접 입력 확인이 남았다.
 
 ### Phase 4 — 확장 기능 (1.5~2주)
 
@@ -362,7 +368,7 @@ flush():
 
 - [ ] Developer ID 서명, 공증(notarization), `.pkg` 설치기(`~/Library/Input Methods`)
 - [ ] 설치/제거/업데이트 안내, 재로그인 필요 여부 문서화
-- [ ] GitHub Actions(macOS 러너): `cargo fmt --check` / `cargo clippy` / `cargo test` → datagen 재실행 후 `data/` diff 없음 확인 → 유니버설 staticlib 빌드 → `xcodebuild`
+- [ ] GitHub Actions(macOS 러너): `cargo fmt --check` / `cargo clippy` / `cargo test` → datagen 재실행 후 `data/` diff 없음 확인 → `CHECK_HEADER=1`로 C 헤더 최신 확인 → 유니버설 staticlib 빌드 → `scripts/build-macos.sh`
 - [ ] 사용자 문서: 배열도, 결합 규칙 링크, 키보드 고스트 키 안내, 타이머 조절법, 한/영 전환 설정(Caps Lock / 오른쪽 Command, 3.2)
 - [ ] 오른쪽 Command 전환용 LaunchAgent plist를 `scripts/`에 포함하고 설치·해제 스크립트 제공(선택 설치)
 
@@ -384,8 +390,7 @@ semoe-macos/
 ├── data/                        # 생성된 JSON (CC BY-SA 4.0), 커밋 대상
 │   └── src/                     # 수작업 원본: unit-names.json, abbreviations-extra.json
 ├── macos/
-│   ├── project.yml              # XcodeGen 정의 (Xcode 프로젝트는 생성물로 취급)
-│   └── SemoeIME/                # Swift 소스, Info.plist, 아이콘, module.modulemap
+│   └── SemoeIME/                # Swift 소스, Info.plist, 아이콘 (swiftc로 빌드, XcodeGen 안 씀)
 ├── scripts/
 │   ├── build-rust-universal.sh  # 두 타깃 빌드 + lipo + 헤더 생성
 │   ├── gen-data.sh              # ../Semo-e_keyboard XML → data/
@@ -394,7 +399,7 @@ semoe-macos/
 └── docs/
 ```
 
-- 현재 저장소에는 IntelliJ 모듈(`semoe-macos.iml`)만 있다. RustRover/IntelliJ Rust 플러그인으로 workspace를 열고, Swift 쪽은 Xcode로 편집한다. 둘 다 CLI(`cargo`, `xcodebuild`)만으로 빌드 가능하게 한다.
+- 현재 저장소에는 IntelliJ 모듈(`semoe-macos.iml`)만 있다. RustRover/IntelliJ Rust 플러그인으로 workspace를 열고, Swift 쪽은 Xcode로 편집한다. 둘 다 CLI(`cargo`, `swiftc`)만으로 빌드한다.
 - 이후 다른 플랫폼을 붙일 때는 `semoe-core`를 별도 저장소로 떼어 내거나 저장소 이름을 바꾸는 것을 검토한다.
 
 ---

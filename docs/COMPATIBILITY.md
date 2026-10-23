@@ -1,0 +1,44 @@
+# 앱 호환성
+
+세모이 입력기를 앱마다 확인한 결과입니다. 앱별 우회 처리는 아직 필요한 곳이 없습니다. 우회가 입력 판단에 관한 것이면 Swift가 아니라 엔진 옵션으로 둡니다(계획서 Phase 3).
+
+- 확인 환경: macOS 27.0.1, Apple Silicon, 맥북 내장 키보드
+- 기준 빌드: Phase 3 (탭 물리 키 스트림 + 엔진 데이터 내장)
+
+## 확인 방법
+
+| 표시 | 뜻 |
+| --- | --- |
+| 자동 | 합성 키 이벤트(`CGEventPost`, HID 수준)로 정해진 패턴을 입력하고 결과 문자열을 비교함. TextEdit은 문서 내용으로, 브라우저는 로컬 테스트 페이지(`textarea`)로 결과를 읽음 |
+| 직접 | 사용자가 실제 키보드로 입력하고 이벤트 로그(`scripts/analyze-events.py`)로 확인함 |
+| IMK만 | Phase 0 초기 빌드(IMK keyDown만 사용)로 입력 이벤트 수신만 확인함 |
+
+자동 패턴: chord 순서 바꾸기, 스페이스 모아치기, 겹받침, 간격 없는 chord, 키를 누른 채 다음 chord, 꾹 누른 채 늦게 누르기, 키뗌 직후 다음 키, `됐`의 여러 순서, 재밍 타이밍, 이어치기.
+
+## 결과
+
+| 앱 | 번들 ID | 확인 | keyDown 지연 p99 (ms) | 결과 | 비고 |
+| --- | --- | --- | ---: | --- | --- |
+| TextEdit | com.apple.TextEdit | 자동 | 73 | ✅ | 앱 실행 직후 첫 타건이 최대 70 ms 늦음 → 확정을 미뤄 해결(Phase 0) |
+| Safari | com.apple.Safari | 자동 | 66 | ✅ | Phase 3에서 탭 대상 오류 수정(아래) |
+| Chrome | com.google.Chrome | 자동 | 95 | ✅ | |
+| Slack | com.tinyspeck.slackmacgap | 직접 | — | ✅ | 맥북 내장 키보드의 재밍 사례가 처음 관찰된 곳(`뺨`) |
+| Warp | dev.warp.Warp-Stable | 직접 | 28 | ✅ | 유실 0 |
+| Terminal | com.apple.Terminal | IMK만 | — | ⏳ | |
+| IntelliJ | com.jetbrains.intellij | IMK만 | — | ⏳ | |
+| VS Code | com.microsoft.VSCode | IMK만 | — | ⏳ | |
+| Pages | com.apple.Pages | IMK만 | — | ⏳ | |
+| Word | com.microsoft.Word | IMK만 | — | ⏳ | |
+| Dia | company.thebrowser.dia | IMK만 | — | ⏳ | |
+| Raycast | com.raycast.macos | IMK만 | — | ⏳ | Phase 0에서 타이머 지연 최대 19 ms |
+
+⏳ 항목은 터미널·IDE·문서 앱이라, 합성 키로 명령이 실행되거나 파일이 바뀔 위험이 있어 자동 테스트를 하지 않았습니다. 직접 입력해 확인해야 합니다.
+
+## 알려진 문제와 조치
+
+| 증상 | 원인 | 조치 |
+| --- | --- | --- |
+| 키를 다 뗐는데도 타이머로만 확정되어 다음 음절과 합쳐짐 (Safari `가ㅇ` → `강`, Phase 2) | 입력 세션이 둘 활성화되어 있었음(Safari, `com.apple.Keyboard-Settings.extension`). 탭이 "마지막으로 활성화된" 컨트롤러로 키뗌을 보내서, 키뗌 27개가 모두 엉뚱한 세션으로 감 | 탭 대상을 "IMK keyDown을 마지막으로 받은 컨트롤러"로 바꿈 (Phase 3) |
+| 입력기를 재설치(프로세스 재시작)한 직후 이미 열려 있던 앱에서는 영문이 그대로 들어감 | 앱의 입력 세션이 이전 프로세스에 묶여 있음. 새 창·탭이나 다시 포커스하면 정상 | 개발 중 재설치에서만 생김. `install-dev.sh`가 설치 직후 입력기를 바로 띄움 |
+| 앱 활성화 직후 첫 keyDown이 수십 ms 늦게 옴 (TextEdit, Phase 0) | 앱 쪽 지연 | 탭에 기록된 keyDown이 IMK로 아직 오지 않았으면 타이머 확정을 미룸 |
+| 4~5키 chord가 쪼개짐 (`뺨` → `뺘ㅁ`) | 맥북 내장 키보드의 동시 입력 한계(재밍) | 하드웨어 한계로 보고, 추가 약어(`ojz` → 뺨)로 대응 |
