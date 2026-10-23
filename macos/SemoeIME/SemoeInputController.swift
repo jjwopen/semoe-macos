@@ -2,20 +2,31 @@ import AppKit
 import InputMethodKit
 
 /// Info.plist의 InputMethodServerControllerClass와 같은 이름으로 Objective-C에 노출한다.
+/// 앱의 입력 세션마다 하나씩 생긴다. 입력 판단은 엔진(semoe-core)이 하고, 여기서는 이벤트를 모아
+/// 엔진에 넣고 결과를 앱에 반영한다.
 @objc(SemoeInputController)
 final class SemoeInputController: IMKInputController {
-    static let useKeyUpKey = "useKeyUp"
-
     private let engine = EngineHandle()
-    private var timer: DispatchSourceTimer?
-    private var hasMarked = false
+    private var bridge = ClientBridge()
+    private lazy var timer = CommitTimer { [weak self] deadline in self?.timerFired(deadline) }
+    private var observer: NSObjectProtocol?
 
-    private static let notFound = NSRange(location: NSNotFound, length: NSNotFound)
+    override init!(server: IMKServer!, delegate: Any!, client inputClient: Any!) {
+        super.init(server: server, delegate: delegate, client: inputClient)
+        observer = NotificationCenter.default.addObserver(
+            forName: Preferences.didChange, object: nil, queue: .main
+        ) { [weak self] _ in self?.preferencesChanged() }
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
 
     // MARK: - 이벤트
 
     override func recognizedEvents(_ sender: Any!) -> Int {
-        Int(NSEvent.EventTypeMask([.keyDown, .keyUp, .flagsChanged]).rawValue)
+        let mask: NSEvent.EventTypeMask = [.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        return Int(mask.rawValue)
     }
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
@@ -24,6 +35,9 @@ final class SemoeInputController: IMKInputController {
         let tap = KeyTap.shared.isRunning
         switch event.type {
         case .keyDown where tap:
+            // 키를 실제로 받는 컨트롤러가 탭 이벤트도 받는다. 활성화 순서로 정하면, 다른 세션(예: 시스템
+            // 키보드 설정 확장)이 뒤늦게 활성화될 때 키뗌이 엉뚱한 세션으로 간다 (Phase 3에서 확인).
+            KeyTap.shared.target = self
             // 탭 기록에서 이 keyDown의 짝을 찾아 그 앞의 물리 이벤트(주로 keyUp)부터 순서대로 넣는다.
             let (before, match) = KeyTap.shared.take(matching: event.keyCode)
             feedTap(before, client: client)
@@ -39,6 +53,13 @@ final class SemoeInputController: IMKInputController {
             let out = feed(event, up: event.type == .keyUp, timestamp: event.timestamp, client: client)
             EventLog.shared.key(event, bundleID: bundleID, consumed: out.consumed)
             return out.consumed
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            // 커서를 옮기기 전에 조합을 확정한다. 이벤트는 앱에 그대로 넘긴다.
+            if bridge.hasMarked {
+                EventLog.shared.note("mouse", bundleID: bundleID)
+                apply(engine.flush(), to: client)
+            }
+            return false
         default:
             EventLog.shared.key(event, bundleID: bundleID, consumed: false)
             return false
@@ -84,16 +105,7 @@ final class SemoeInputController: IMKInputController {
         super.activateServer(sender)
         KeyTap.shared.target = self
         KeyTap.shared.start()
-        EventLog.shared.note("activate", bundleID: Self.bundleID(sender), applyKeyUpOption())
-    }
-
-    /// 키뗌 확정은 사용자가 켜 두었고 키 탭이 돌고 있을 때만 쓴다. 아니면 타이머 전용(방안 C).
-    @discardableResult
-    private func applyKeyUpOption() -> String {
-        let wanted = UserDefaults.standard.object(forKey: Self.useKeyUpKey) as? Bool ?? true
-        let tap = KeyTap.shared.isRunning
-        engine.setOption("keyup", wanted && tap ? "on" : "off")
-        return "keyup=\(wanted ? "on" : "off") tap=\(tap ? "on" : "off")"
+        EventLog.shared.note("activate", bundleID: Self.bundleID(sender), Preferences.apply(to: engine))
     }
 
     override func deactivateServer(_ sender: Any!) {
@@ -104,7 +116,7 @@ final class SemoeInputController: IMKInputController {
     }
 
     override func commitComposition(_ sender: Any!) {
-        EventLog.shared.note("commitComposition", bundleID: Self.bundleID(sender), hasMarked ? "marked" : "")
+        EventLog.shared.note("commitComposition", bundleID: Self.bundleID(sender), bridge.hasMarked ? "marked" : "")
         flush(sender)
     }
 
@@ -113,57 +125,32 @@ final class SemoeInputController: IMKInputController {
         if let client = sender as? IMKTextInput {
             apply(out, to: client)
         } else {
-            cancelTimer()
+            timer.cancel()
         }
+    }
+
+    private func preferencesChanged() {
+        // 입력 방식을 바꾸면 엔진이 조합을 버리므로 먼저 확정한다.
+        if let client = client() {
+            apply(engine.flush(), to: client)
+        }
+        EventLog.shared.note("option", bundleID: "-", Preferences.apply(to: engine))
     }
 
     // MARK: - 출력
 
     private func apply(_ out: EngineHandle.Output, to client: IMKTextInput) {
-        if !out.commit.isEmpty {
-            client.insertText(out.commit, replacementRange: Self.notFound)
-            hasMarked = false
-        }
-        if !out.marked.isEmpty {
-            let length = (out.marked as NSString).length
-            client.setMarkedText(out.marked, selectionRange: NSRange(location: length, length: 0),
-                                 replacementRange: Self.notFound)
-            hasMarked = true
-        } else if hasMarked {
-            client.setMarkedText("", selectionRange: NSRange(location: 0, length: 0), replacementRange: Self.notFound)
-            hasMarked = false
-        }
-        schedule(out.deadlineMs)
-    }
-
-    private func schedule(_ deadlineMs: UInt64?) {
-        cancelTimer()
-        guard let deadlineMs else { return }
-        let delay = max(0, Double(deadlineMs) - EventLog.nowMs())
-        let t = DispatchSource.makeTimerSource(flags: .strict, queue: .main)
-        t.schedule(deadline: .now() + .microseconds(Int(delay * 1000)), leeway: .milliseconds(1))
-        t.setEventHandler { [weak self] in self?.timerFired(deadlineMs) }
-        t.resume()
-        timer = t
-    }
-
-    private func cancelTimer() {
-        timer?.cancel()
-        timer = nil
+        bridge.apply(out, to: client)
+        timer.schedule(out.deadlineMs)
     }
 
     private func timerFired(_ deadlineMs: UInt64) {
-        guard let client = client() else { return cancelTimer() }
+        guard let client = client() else { return timer.cancel() }
         // 마감 전에 눌렸지만 IMK가 아직 넘기지 않은 keyDown이 있으면 그 키도 이 음절에 속한다.
         // 앱이 keyDown을 수십 ms 늦게 넘기는 경우가 있어(Phase 0), 도착할 때까지 확정을 미룬다.
         if let pending = KeyTap.shared.oldestPendingDownMs(), pending < Double(deadlineMs) {
             EventLog.shared.note("timer-wait", bundleID: client.bundleIdentifier() ?? "?")
-            let t = DispatchSource.makeTimerSource(flags: .strict, queue: .main)
-            t.schedule(deadline: .now() + .milliseconds(2), leeway: .milliseconds(1))
-            t.setEventHandler { [weak self] in self?.timerFired(deadlineMs) }
-            t.resume()
-            cancelTimer()
-            timer = t
+            timer.schedule(deadlineMs, afterMs: 2)
             return
         }
         EventLog.shared.timer(bundleID: client.bundleIdentifier() ?? "?", deadlineMs: deadlineMs)
@@ -179,35 +166,42 @@ final class SemoeInputController: IMKInputController {
 
     override func menu() -> NSMenu! {
         let menu = NSMenu()
-        let useKeyUp = UserDefaults.standard.object(forKey: Self.useKeyUpKey) as? Bool ?? true
-        let keyUp = NSMenuItem(title: "키뗌으로 확정 (끄면 타이머 전용)", action: #selector(toggleKeyUp(_:)), keyEquivalent: "")
-        keyUp.state = useKeyUp ? .on : .off
-        menu.addItem(keyUp)
-        if KeyTap.shared.isRunning {
-            menu.addItem(NSMenuItem(title: "키뗌 감지: 동작 중", action: nil, keyEquivalent: ""))
-        } else {
-            menu.addItem(NSMenuItem(title: "키뗌 감지: 입력 모니터링 권한 없음 (타이머 전용)", action: nil, keyEquivalent: ""))
-            menu.addItem(NSMenuItem(title: "입력 모니터링 권한 요청…", action: #selector(requestTapPermission(_:)), keyEquivalent: ""))
+        for (mode, action) in [(Preferences.Mode.chord, #selector(useChord(_:))),
+                               (.sequential, #selector(useSequential(_:)))] {
+            let item = NSMenuItem(title: mode.title, action: action, keyEquivalent: "")
+            item.state = Preferences.mode == mode ? .on : .off
+            menu.addItem(item)
         }
         menu.addItem(.separator())
-        let log = NSMenuItem(title: "Phase 0 이벤트 로그 기록", action: #selector(toggleLog(_:)), keyEquivalent: "")
+        let abbr = NSMenuItem(title: "약어 사용", action: #selector(toggleAbbreviations(_:)), keyEquivalent: "")
+        abbr.state = Preferences.abbreviations ? .on : .off
+        menu.addItem(abbr)
+        if !KeyTap.shared.isRunning {
+            menu.addItem(NSMenuItem(title: "키뗌 감지 꺼짐 (입력 모니터링 권한 필요)", action: nil, keyEquivalent: ""))
+        }
+        menu.addItem(NSMenuItem(title: "환경설정…", action: #selector(showPreferences(_:)), keyEquivalent: ""))
+        menu.addItem(.separator())
+        let log = NSMenuItem(title: "이벤트 로그 기록 (개발용)", action: #selector(toggleLog(_:)), keyEquivalent: "")
         log.state = EventLog.shared.enabled ? .on : .off
         menu.addItem(log)
         menu.addItem(NSMenuItem(title: "로그 폴더 열기", action: #selector(openLog(_:)), keyEquivalent: ""))
         return menu
     }
 
-    @objc func toggleKeyUp(_ sender: Any?) {
-        let useKeyUp = !(UserDefaults.standard.object(forKey: Self.useKeyUpKey) as? Bool ?? true)
-        UserDefaults.standard.set(useKeyUp, forKey: Self.useKeyUpKey)
-        EventLog.shared.note("option", bundleID: "-", applyKeyUpOption())
+    @objc func useChord(_ sender: Any?) {
+        Preferences.mode = .chord
     }
 
-    @objc func requestTapPermission(_ sender: Any?) {
-        KeyTap.shared.requestPermission()
-        if KeyTap.shared.start() {
-            applyKeyUpOption()
-        }
+    @objc func useSequential(_ sender: Any?) {
+        Preferences.mode = .sequential
+    }
+
+    @objc func toggleAbbreviations(_ sender: Any?) {
+        Preferences.abbreviations.toggle()
+    }
+
+    override func showPreferences(_ sender: Any!) {
+        PreferencesWindow.shared.show()
     }
 
     @objc func toggleLog(_ sender: Any?) {

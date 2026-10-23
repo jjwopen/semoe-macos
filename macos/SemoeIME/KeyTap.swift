@@ -17,11 +17,21 @@ final class KeyTap {
     /// IMK keyDown이 왔는데 탭 기록에 아직 짝이 없을 때 기다리는 최대 시간.
     static let matchWaitMs = 10.0
 
-    /// 지금 활성화된 컨트롤러. 탭은 프로세스에 하나뿐이고 이벤트는 이 컨트롤러로만 보낸다.
+    /// 기록을 들고 있는 최대 시간. 입력기가 꺼져 있어 아무도 꺼내 가지 않을 때 기록이 쌓이지 않게 한다.
+    static let maxAgeMs = 2000.0
+
+    /// 마지막으로 IMK keyDown을 받은(없으면 마지막으로 활성화된) 컨트롤러. 탭은 프로세스에 하나뿐이고
+    /// 이벤트는 이 컨트롤러로만 보낸다.
     weak var target: SemoeInputController?
 
     private let lock = NSCondition()
-    private var buffer: [CGEvent] = []
+    private struct Entry {
+        let event: CGEvent
+        /// 탭 스레드가 기록한 시각 (ms, `systemUptime` 기준)
+        let recordedMs: Double
+    }
+
+    private var buffer: [Entry] = []
     private var tap: CFMachPort?
     private var thread: Thread?
 
@@ -73,7 +83,12 @@ final class KeyTap {
         case .keyDown, .keyUp:
             lock.sync {
                 // listenOnly 탭이 넘기는 이벤트는 재사용될 수 있으므로 복사해 둔다.
-                buffer.append(event.copy() ?? event)
+                let now = EventLog.nowMs()
+                buffer.append(Entry(event: event.copy() ?? event, recordedMs: now))
+                // 꺼내 가는 쪽이 없으면 오래된 기록부터 버린다.
+                if let i = buffer.firstIndex(where: { now - $0.recordedMs < Self.maxAgeMs }), i > 0 {
+                    buffer.removeFirst(i)
+                }
                 lock.broadcast()
             }
             DispatchQueue.main.async { [weak self] in self?.target?.drainKeyTap() }
@@ -92,9 +107,9 @@ final class KeyTap {
         let events: [CGEvent]? = lock.sync {
             repeat {
                 if let i = buffer.firstIndex(where: {
-                    $0.type == .keyDown && UInt16($0.getIntegerValueField(.keyboardEventKeycode)) == keyCode
+                    $0.event.type == .keyDown && UInt16($0.event.getIntegerValueField(.keyboardEventKeycode)) == keyCode
                 }) {
-                    let taken = Array(buffer[...i])
+                    let taken = buffer[...i].map(\.event)
                     buffer.removeFirst(i + 1)
                     return taken
                 }
@@ -111,8 +126,8 @@ final class KeyTap {
         let nowMs = EventLog.nowMs()
         return lock.sync {
             buffer.lazy
-                .filter { $0.type == .keyDown }
-                .compactMap { NSEvent(cgEvent: $0).map { $0.timestamp * 1000 } }
+                .filter { $0.event.type == .keyDown }
+                .compactMap { NSEvent(cgEvent: $0.event).map { $0.timestamp * 1000 } }
                 .first { nowMs - $0 < Self.unmatchedDownTimeoutMs }
         }
     }
@@ -124,13 +139,13 @@ final class KeyTap {
         let events: [CGEvent] = lock.sync {
             var n = 0
             for e in buffer {
-                if e.type == .keyDown,
-                   let ns = NSEvent(cgEvent: e), nowMs - ns.timestamp * 1000 < Self.unmatchedDownTimeoutMs {
+                if e.event.type == .keyDown,
+                   let ns = NSEvent(cgEvent: e.event), nowMs - ns.timestamp * 1000 < Self.unmatchedDownTimeoutMs {
                     break
                 }
                 n += 1
             }
-            let taken = Array(buffer.prefix(n))
+            let taken = buffer.prefix(n).map(\.event)
             buffer.removeFirst(n)
             return taken
         }
