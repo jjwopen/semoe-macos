@@ -114,5 +114,6 @@ cargo test
 
 ## 라이선스와 출처
 
-- 세모이 자판(배열, 결합 규칙, 약어)은 **신세기** 님이 만들었습니다: [Sinseiki/Semo-e_keyboard](https://github.com/Sinseiki/Semo-e_keyboard). 이 저장소의 `data/`는 그 자판 데이터를 변환한 것이며 **CC BY-SA 4.0**을 따릅니다.
-- 그 밖의 코드 라이선스는 아직 정하지 않았습니다.
+- **코드**: [MIT 라이선스](LICENSE)
+- **자판 데이터**: 세모이 자판(배열, 결합 규칙, 약어)은 **신세기** 님이 만들었습니다([Sinseiki/Semo-e_keyboard](https://github.com/Sinseiki/Semo-e_keyboard)). 이 저장소의 `data/`는 그 자판 데이터를 변환한 것이며, MIT가 아니라 **CC BY-SA 4.0**을 따릅니다.
+- 배포하는 입력기 바이너리에는 이 자판 데이터가 들어 있습니다. 그래서 바이너리는 MIT와 CC BY-SA 4.0을 함께 따릅니다.
