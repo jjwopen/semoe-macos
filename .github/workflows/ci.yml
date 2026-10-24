@@ -69,8 +69,11 @@ jobs:
           actual=$(codesign -dr - build/SemoeIME.app 2>&1 | sed -n 's/.*certificate leaf = H"\([0-9a-f]*\)".*/\1/p')
           echo "expected=$expected actual=$actual"
           [[ -n "$expected" && "$expected" == "$actual" ]]
-      - name: 아키텍처 확인
-        run: lipo -info build/SemoeIME.app/Contents/MacOS/SemoeIME | grep -q 'x86_64 arm64'
+      - name: 아키텍처·라이선스 고지 확인
+        run: |
+          lipo -info build/SemoeIME.app/Contents/MacOS/SemoeIME | grep -q 'x86_64 arm64'
+          test -f build/SemoeIME.app/Contents/Resources/LICENSE.txt
+          test -f build/SemoeIME.app/Contents/Resources/DATA-NOTICE.md
 
       - name: 앱 묶기
         run: ditto -c -k --keepParent build/SemoeIME.app build/SemoeIME-ci.zip
