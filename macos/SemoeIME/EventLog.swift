@@ -3,7 +3,7 @@ import AppKit
 /// Phase 0 검증용 이벤트 로그 (~/Library/Logs/SemoeIME/events.tsv).
 ///
 /// 키 코드만 남기고 문자·조합 결과는 남기지 않는다. 그래도 키 코드로 입력 내용을 복원할 수 있으므로
-/// 검증이 끝나면 메뉴에서 끄거나 파일을 지운다.
+/// 기본은 꺼져 있고, 개발·문제 조사 때만 메뉴에서 켠다.
 ///
 /// 열: uptime_ms  kind  bundle_id  key_code  repeat  event_ms  lag_ms  extra
 /// - kind: down/up/down-nomatch(IMK), tapdown/tapup/tapskip(KeyTap), flags, timer, activate/deactivate/option
@@ -16,7 +16,7 @@ final class EventLog {
     static let defaultsKey = "eventLogEnabled"
 
     var enabled: Bool {
-        get { UserDefaults.standard.object(forKey: Self.defaultsKey) as? Bool ?? true }
+        get { UserDefaults.standard.object(forKey: Self.defaultsKey) as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: Self.defaultsKey) }
     }
 
