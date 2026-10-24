@@ -445,7 +445,7 @@ semoe-macos/
 ## 8. 결정이 필요한 사항
 
 1. ~~코드 라이선스~~ → **MIT** (데이터는 CC BY-SA 4.0 고정, 데이터를 내장한 `semoe-core`·`semoe-ffi`는 `MIT AND CC-BY-SA-4.0`)
-2. 최소 지원 macOS 버전 (제안: macOS 13 이상), Rust 최소 버전(MSRV, 제안: 고정하지 않고 stable 추적)
+2. ~~최소 지원 macOS 버전~~ → **macOS 13 이상** 유지. Rust는 MSRV를 고정하지 않고 stable을 따른다.
 3. ~~입력기 내부 영문 모드 포함 여부~~ → 시스템 입력 소스 전환(Caps Lock 또는 오른쪽 Command→F18)으로 결정 (3.2)
-4. 원본 저장소를 git submodule로 연결할지, 데이터만 복사할지
-5. 다른 플랫폼(Linux·Windows) 껍데기 착수 시점과 `semoe-core` 저장소 분리 여부
+4. ~~원본 저장소 연결 방식~~ → **submodule 없이 데이터만 커밋.** 원본은 데이터를 다시 만들 때만 필요하고(`scripts/gen-data.sh`, 기본 경로 `../Semo-e_keyboard`), CI는 `data/meta.json`의 커밋을 받아 생성물이 최신인지 확인한다. 설치·소스 빌드에는 필요 없다.
+5. ~~다른 플랫폼 착수 시점~~ → **당분간 macOS만.** 엔진(`semoe-core`)은 플랫폼 중립으로 유지하되, 저장소 분리는 다른 플랫폼을 시작할 때 다시 정한다.

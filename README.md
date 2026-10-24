@@ -58,6 +58,16 @@ open ~/Library/Input\ Methods/SemoeIME.app
   curl -fsSL https://raw.githubusercontent.com/jjwopen/semoe-macos/main/uninstall.sh | bash
   ```
 
+## 배열
+
+![세모이 배열도](https://raw.githubusercontent.com/Sinseiki/Semo-e_keyboard/ea2a9298abe1ba4b01063a7cc9b3a484f04111b1/%EC%84%B8%EB%AA%A8%EC%9D%B4%20%EC%9E%90%ED%8C%90%20%EB%B0%B0%EC%97%B4%EB%8F%84/%EC%84%B8%EB%AA%A8%EC%9D%B4%20%EB%B0%B0%EC%97%B4%EB%8F%84.png)
+
+기호 확장 배열 (Shift+J 다음 Shift+K·L·;로 1~3단계):
+
+![세모이 기호확장 배열도](https://raw.githubusercontent.com/Sinseiki/Semo-e_keyboard/ea2a9298abe1ba4b01063a7cc9b3a484f04111b1/%EC%84%B8%EB%AA%A8%EC%9D%B4%20%EC%9E%90%ED%8C%90%20%EB%B0%B0%EC%97%B4%EB%8F%84/%EC%84%B8%EB%AA%A8%EC%9D%B4%20%EA%B8%B0%ED%98%B8%ED%99%95%EC%9E%A5%20%EB%B0%B0%EC%97%B4%EB%8F%84.png)
+
+배열도: [Sinseiki/Semo-e_keyboard](https://github.com/Sinseiki/Semo-e_keyboard) (CC BY-SA 4.0). 이 입력기가 쓰는 원본 커밋의 그림을 불러옵니다.
+
 ## 쓰는 법
 
 입력기 메뉴(메뉴 막대)에서 입력 방식, 약어, 기호 조합, 옛한글 모드를 바꿀 수 있습니다. 환경설정 창에서는 조합 종료 타이머와 Caps Lock 순아래를 설정합니다.
@@ -69,7 +79,7 @@ open ~/Library/Input\ Methods/SemoeIME.app
 | 스페이스 모아치기 | 음절과 Space를 함께 누르면 뒤에 공백이 붙습니다 (`강 `) |
 | 옛한글 방점 | 옛한글 모드에서 Shift+Y(〮), Shift+U(〯) |
 
-자판 배열과 결합 규칙, 약어 목록은 [원본 저장소](https://github.com/Sinseiki/Semo-e_keyboard)의 배열도와 설명서를 참고하세요.
+결합 규칙과 약어 목록은 [원본 저장소](https://github.com/Sinseiki/Semo-e_keyboard)의 설명서를 참고하세요.
 
 ### 한/영 전환
 
