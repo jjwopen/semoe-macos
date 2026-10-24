@@ -376,11 +376,20 @@ flush():
 
 ### Phase 5 — 배포 (1주)
 
-- [ ] Developer ID 서명, 공증(notarization), `.pkg` 설치기(`~/Library/Input Methods`)
-- [ ] 설치/제거/업데이트 안내, 재로그인 필요 여부 문서화
-- [ ] GitHub Actions(macOS 러너): `cargo fmt --check` / `cargo clippy` / `cargo test` → datagen 재실행 후 `data/` diff 없음 확인 → `CHECK_HEADER=1`로 C 헤더 최신 확인 → 유니버설 staticlib 빌드 → `scripts/build-macos.sh`
-- [ ] 사용자 문서: 배열도, 결합 규칙 링크, 키보드 고스트 키 안내, 타이머 조절법, 한/영 전환 설정(Caps Lock / 오른쪽 Command, 3.2)
-- [ ] 오른쪽 Command 전환용 LaunchAgent plist를 `scripts/`에 포함하고 설치·해제 스크립트 제공(선택 설치)
+Apple Developer 계정을 쓸 수 없어 **Developer ID 서명·공증 없이** 배포한다.
+
+- [x] ~~Developer ID 서명, 공증(notarization), `.pkg` 설치기~~ → 자체 서명 인증서 + GitHub Releases + `curl` 설치 스크립트
+  - `scripts/setup-release-signing.sh`: 릴리스 인증서 "Semoe Release Signing"(SHA-1 `6567a149…`)을 만든다. 개인 키는 `~/.semoe-release/`에만 두고 저장소 비밀값으로 CI에 넘긴다.
+  - 모든 릴리스를 같은 인증서로 서명해서, 서명 기준으로 기억되는 입력 모니터링 권한이 업데이트 뒤에도 유지된다.
+  - `curl`로 받은 파일에는 격리 속성이 붙지 않아 Gatekeeper 경고가 없다. 그 대신 `install.sh`가 SHA-256과 인증서 해시를 확인한다. 개발 서명이나 변조된 앱은 설치를 거부한다.
+  - 입력 소스 등록은 앱 자체가 한다(`SemoeIME --register` / `--unregister`). 사용자 Mac에는 Swift 도구가 없기 때문이다.
+- [x] 설치/제거/업데이트 안내, 재로그인 필요 여부 문서화 → `README.md`, `install.sh`, `uninstall.sh`
+- [x] GitHub Actions(macOS 러너): `cargo fmt --check` / `cargo clippy` / `cargo test` → datagen 재실행 후 `data/` diff 없음 확인 → `CHECK_HEADER=1`로 C 헤더 최신 확인 → 유니버설 staticlib 빌드 → `scripts/build-macos.sh` (`ci.yml`)
+- [x] 릴리스 워크플로(`release.yml`): `v*` 태그 → 테스트·생성물 확인 → 임시 키체인에 인증서를 넣고 서명 빌드 → 인증서 해시가 `install.sh`와 같은지 확인 → `SemoeIME.zip`과 SHA-256 파일을 Releases에 올림. 하이픈이 있는 태그는 시험판으로 올린다.
+- [x] 사용자 문서: 결합 규칙·배열도 링크, 키보드 동시 입력 한계, 타이머 조절법, 한/영 전환 설정 (`README.md`). 배열도 그림은 원본 저장소 것을 링크로 대신한다.
+- [x] 오른쪽 Command 전환용 LaunchAgent → `install.sh --right-cmd`. 이미 다른 `hidutil` 매핑이 있으면 덮어쓰지 않는다. `uninstall.sh`가 함께 지운다.
+- [x] 배포판에서는 개발용 이벤트 로그를 기본으로 끈다.
+- [ ] 첫 릴리스: 저장소 비밀값 `SEMOE_SIGNING_P12`, `SEMOE_SIGNING_P12_PASSWORD`를 등록하고 `v0.1.0` 태그를 올린다.
 
 총 예상: **약 10~12주** (1인 기준, Swift 단독 대비 FFI·이중 빌드 구성으로 약 1주 추가, Phase 0 결과에 따라 ±2주)
 
@@ -405,7 +414,8 @@ semoe-macos/
 │   ├── build-rust-universal.sh  # 두 타깃 빌드 + lipo + 헤더 생성
 │   ├── gen-data.sh              # ../Semo-e_keyboard XML → data/
 │   ├── install-dev.sh           # 개발용 설치·재등록
-│   └── right-cmd-hangul/        # 오른쪽 Command → F18 LaunchAgent plist + 설치/해제 스크립트
+│   ├── setup-release-signing.sh # 릴리스 서명 인증서 (한 번)
+│   └── …                        # 오른쪽 Command → F18은 install.sh --right-cmd
 └── docs/
 ```
 
