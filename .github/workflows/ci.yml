@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # 생성 데이터를 확인하려면 원본 자판 저장소가 필요하다. data/meta.json에 적힌 커밋을 받는다.
+      - name: 원본 커밋 읽기
+        id: source
+        run: echo "commit=$(jq -r .source.commit data/meta.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: Sinseiki/Semo-e_keyboard
+          ref: ${{ steps.source.outputs.commit }}
+          path: Semo-e_keyboard
+
+      - name: Rust 설치
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cbindgen
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: cargo test
+        run: cargo test
+
+      - name: 생성 데이터가 최신인지 확인
+        run: SEMOE_SOURCE=Semo-e_keyboard scripts/gen-data.sh --check
+
+      # CHECK_HEADER=1이면 C 헤더를 다시 쓰지 않고 최신인지만 본다.
+      - name: 입력기 빌드 (유니버설, ad-hoc 서명)
+        run: CHECK_HEADER=1 scripts/build-macos.sh
+      - name: 아키텍처 확인
+        run: lipo -info build/SemoeIME.app/Contents/MacOS/SemoeIME | grep -q 'x86_64 arm64'
+
+      - name: 앱 묶기
+        run: ditto -c -k --keepParent build/SemoeIME.app build/SemoeIME-unsigned.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SemoeIME-unsigned
+          path: build/SemoeIME-unsigned.zip
+          retention-days: 14
