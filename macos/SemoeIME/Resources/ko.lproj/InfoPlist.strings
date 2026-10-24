@@ -1,0 +1,5 @@
+/* 입력 소스 이름. 입력 모드 이름은 모드 ID를 키로 쓴다(없으면 메뉴 막대에 ID가 그대로 보인다). */
+"CFBundleName" = "세모이";
+"CFBundleDisplayName" = "세모이";
+"io.github.jjwopen.inputmethod.Semoe" = "세모이";
+"io.github.jjwopen.inputmethod.Semoe.Chord" = "세모이";

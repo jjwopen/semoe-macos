@@ -1,0 +1,5 @@
+/* Input source names. Input mode names are keyed by the mode ID. */
+"CFBundleName" = "Semoe";
+"CFBundleDisplayName" = "Semoe";
+"io.github.jjwopen.inputmethod.Semoe" = "Semoe";
+"io.github.jjwopen.inputmethod.Semoe.Chord" = "Semoe";
