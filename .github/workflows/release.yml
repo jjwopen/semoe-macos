@@ -55,6 +55,8 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           CHECK_HEADER=1 SEMOE_VERSION="$version" SEMOE_BUILD="$GITHUB_RUN_NUMBER" scripts/build-macos.sh
           lipo -info build/SemoeIME.app/Contents/MacOS/SemoeIME | grep -q 'x86_64 arm64'
+          test -f build/SemoeIME.app/Contents/Resources/LICENSE.txt
+          test -f build/SemoeIME.app/Contents/Resources/DATA-NOTICE.md
 
       # install.sh가 받은 앱을 확인할 때 쓰는 인증서 해시와 실제 서명이 같아야 한다.
       - name: 서명 인증서 확인

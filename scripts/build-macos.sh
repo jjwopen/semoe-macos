@@ -44,6 +44,9 @@ cp "$SRC/Info.plist" "$APP/Contents/Info.plist"
 [[ -z "${SEMOE_VERSION:-}" ]] || plutil -replace CFBundleShortVersionString -string "$SEMOE_VERSION" "$APP/Contents/Info.plist"
 [[ -z "${SEMOE_BUILD:-}" ]] || plutil -replace CFBundleVersion -string "$SEMOE_BUILD" "$APP/Contents/Info.plist"
 cp "$SRC"/Resources/* "$APP/Contents/Resources/"
+# 라이선스 고지: 코드(MIT)와, 바이너리에 내장한 자판 데이터(CC BY-SA 4.0)의 출처
+cp LICENSE "$APP/Contents/Resources/LICENSE.txt"
+cp data/README.md "$APP/Contents/Resources/DATA-NOTICE.md"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 codesign --force --sign "$SIGN_IDENTITY" ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"} --timestamp=none "$APP"
