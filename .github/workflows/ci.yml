@@ -15,6 +15,9 @@ concurrency:
 jobs:
   build:
     runs-on: macos-15
+    env:
+      # 저장소 비밀값이 있으면(같은 저장소의 push·PR) 릴리스 서명까지 시험한다. 포크 PR에는 없다.
+      HAS_SIGNING: ${{ secrets.SEMOE_SIGNING_P12 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,16 +51,34 @@ jobs:
       - name: 생성 데이터가 최신인지 확인
         run: SEMOE_SOURCE=Semo-e_keyboard scripts/gen-data.sh --check
 
+      - name: 릴리스 서명 인증서 넣기
+        if: env.HAS_SIGNING == 'true'
+        env:
+          P12: ${{ secrets.SEMOE_SIGNING_P12 }}
+          P12_PASSWORD: ${{ secrets.SEMOE_SIGNING_P12_PASSWORD }}
+        run: scripts/ci-import-signing.sh
+
       # CHECK_HEADER=1이면 C 헤더를 다시 쓰지 않고 최신인지만 본다.
-      - name: 입력기 빌드 (유니버설, ad-hoc 서명)
+      # 인증서를 넣었으면 릴리스 인증서로, 아니면 ad-hoc으로 서명한다.
+      - name: 입력기 빌드 (유니버설)
         run: CHECK_HEADER=1 scripts/build-macos.sh
+      - name: 릴리스 서명 확인
+        if: env.HAS_SIGNING == 'true'
+        run: |
+          expected=$(sed -n 's/^EXPECTED_CERT_SHA1=//p' install.sh)
+          actual=$(codesign -dr - build/SemoeIME.app 2>&1 | sed -n 's/.*certificate leaf = H"\([0-9a-f]*\)".*/\1/p')
+          echo "expected=$expected actual=$actual"
+          [[ -n "$expected" && "$expected" == "$actual" ]]
       - name: 아키텍처 확인
         run: lipo -info build/SemoeIME.app/Contents/MacOS/SemoeIME | grep -q 'x86_64 arm64'
 
       - name: 앱 묶기
-        run: ditto -c -k --keepParent build/SemoeIME.app build/SemoeIME-unsigned.zip
+        run: ditto -c -k --keepParent build/SemoeIME.app build/SemoeIME-ci.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: SemoeIME-unsigned
-          path: build/SemoeIME-unsigned.zip
+          name: SemoeIME-ci
+          path: build/SemoeIME-ci.zip
           retention-days: 14
+      - name: 임시 키체인 지우기
+        if: always() && env.HAS_SIGNING == 'true'
+        run: '[[ -z "${SIGN_KEYCHAIN:-}" ]] || security delete-keychain "$SIGN_KEYCHAIN"'
