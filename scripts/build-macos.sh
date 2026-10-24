@@ -2,6 +2,9 @@
 # 세모이 입력기 앱 번들(build/SemoeIME.app)을 만든다. Xcode 없이 Command Line Tools만으로 빌드한다.
 #   SIGN_IDENTITY  codesign 인증서. 기본은 scripts/setup-dev-signing.sh로 만든 개발용 인증서,
 #                  그것도 없으면 "-" (ad-hoc: 빌드마다 입력 모니터링 권한이 풀린다)
+#   SIGN_KEYCHAIN  SIGN_IDENTITY를 찾을 키체인 (릴리스 CI에서 임시 키체인을 쓸 때)
+#   SEMOE_VERSION  앱 버전 (CFBundleShortVersionString, 예: 0.1.0). 없으면 Info.plist 그대로
+#   SEMOE_BUILD    빌드 번호 (CFBundleVersion)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -14,6 +17,9 @@ if [[ -z "${SIGN_IDENTITY:-}" && -f "$DEV_KEYCHAIN" ]]; then
     SIGN_ARGS=(--keychain "$DEV_KEYCHAIN")
 fi
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+if [[ -n "${SIGN_KEYCHAIN:-}" ]]; then
+    SIGN_ARGS=(--keychain "$SIGN_KEYCHAIN")
+fi
 SRC=macos/SemoeIME
 APP=build/SemoeIME.app
 OBJ=build/obj
@@ -35,6 +41,8 @@ done
 lipo -create "$OBJ"/SemoeIME-arm64 "$OBJ"/SemoeIME-x86_64 -output "$APP/Contents/MacOS/SemoeIME"
 
 cp "$SRC/Info.plist" "$APP/Contents/Info.plist"
+[[ -z "${SEMOE_VERSION:-}" ]] || plutil -replace CFBundleShortVersionString -string "$SEMOE_VERSION" "$APP/Contents/Info.plist"
+[[ -z "${SEMOE_BUILD:-}" ]] || plutil -replace CFBundleVersion -string "$SEMOE_BUILD" "$APP/Contents/Info.plist"
 cp "$SRC"/Resources/* "$APP/Contents/Resources/"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
