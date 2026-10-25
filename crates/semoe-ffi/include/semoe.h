@@ -24,6 +24,8 @@ typedef struct {
   bool consumed;
   // 확정 문자열(UTF-8). 없으면 NULL. 다음 호출 전까지만 유효하다.
   const char *commit;
+  // commit을 넣기 전에 커서 바로 앞에서 지울 문자열(UTF-8). 없으면 NULL. 다음 호출 전까지만 유효하다.
+  const char *replace;
   // 조합 중 문자열(UTF-8). 빈 문자열이면 조합 없음. 다음 호출 전까지만 유효하다.
   const char *marked;
   // 이 시각(ms)에 semoe_on_timer를 불러야 한다. -1이면 타이머 해제.
@@ -69,7 +71,7 @@ void semoe_reset(SemoeEngine *engine);
 // 옵션 (알 수 없는 키나 값이면 `false`)
 // - `mode`: `chord`(한 번에 모아치기) / `sequential`(이어치기·중종성 모아치기). 바꾸면 조합을 버린다.
 // - `timeout_ms`: 1~1000
-// - `keyup`, `abbrev`, `compose`, `caps_lock_shift`, `old_hangul`: `on` / `off`
+// - `keyup`, `abbrev`, `compose`, `compose_inline`, `caps_lock_shift`, `old_hangul`: `on` / `off`
 //
 // # Safety
 // `key`와 `value`는 NUL로 끝나는 유효한 C 문자열이거나 NULL이어야 한다.

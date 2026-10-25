@@ -6,6 +6,8 @@ final class EngineHandle {
     struct Output {
         var consumed: Bool
         var commit: String
+        /// commit을 넣기 전에 커서 바로 앞에서 지울 문자열 (앞서 확정한 기호 조합 중간 문자열)
+        var replace: String
         var marked: String
         /// 이 시각(ms)에 onTimer를 불러야 한다. nil이면 타이머 해제.
         var deadlineMs: UInt64?
@@ -50,6 +52,7 @@ final class EngineHandle {
         Output(
             consumed: out.consumed,
             commit: out.commit.map { String(cString: $0) } ?? "",
+            replace: out.replace.map { String(cString: $0) } ?? "",
             marked: out.marked.map { String(cString: $0) } ?? "",
             deadlineMs: out.deadline_ms >= 0 ? UInt64(out.deadline_ms) : nil
         )

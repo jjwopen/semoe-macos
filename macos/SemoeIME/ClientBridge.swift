@@ -8,9 +8,15 @@ struct ClientBridge {
     /// 앱에 조합 중 문자열을 보여 주고 있는가
     private(set) var hasMarked = false
 
+    /// 커서 앞 문자열을 바꿀 수 있는 클라이언트인가. 엔진의 `compose_inline`을 정하는 데 쓴다.
+    static func canReplace(_ client: IMKTextInput) -> Bool {
+        let sel = client.selectedRange()
+        return sel.location != NSNotFound && sel.length != NSNotFound
+    }
+
     mutating func apply(_ out: EngineHandle.Output, to client: IMKTextInput) {
-        if !out.commit.isEmpty {
-            client.insertText(out.commit, replacementRange: Self.notFound)
+        if !out.commit.isEmpty || !out.replace.isEmpty {
+            client.insertText(out.commit, replacementRange: Self.range(before: out.replace, in: client))
             hasMarked = false
         }
         if !out.marked.isEmpty {
@@ -22,6 +28,17 @@ struct ClientBridge {
             client.setMarkedText("", selectionRange: NSRange(location: 0, length: 0), replacementRange: Self.notFound)
             hasMarked = false
         }
+    }
+
+    /// 커서 바로 앞의 `text` 범위. 커서 앞이 `text`가 아니면 바꾸지 않고 그냥 넣는다.
+    private static func range(before text: String, in client: IMKTextInput) -> NSRange {
+        let length = (text as NSString).length
+        guard length > 0 else { return notFound }
+        let sel = client.selectedRange()
+        guard sel.location != NSNotFound, sel.length == 0, sel.location >= length else { return notFound }
+        let range = NSRange(location: sel.location - length, length: length)
+        guard client.attributedSubstring(from: range)?.string == text else { return notFound }
+        return range
     }
 }
 

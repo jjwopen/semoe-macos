@@ -58,7 +58,7 @@ final class EventLog {
 
     /// 엔진 출력의 꼴: 확정·조합 문자열의 글자 수만 남긴다(내용은 남기지 않음).
     static func shape(_ out: EngineHandle.Output) -> String {
-        " c=\(out.commit.count) m=\(out.marked.count)"
+        " c=\(out.commit.count) m=\(out.marked.count)" + (out.replace.isEmpty ? "" : " r=\(out.replace.count)")
     }
 
     func timer(bundleID: String, deadlineMs: UInt64) {

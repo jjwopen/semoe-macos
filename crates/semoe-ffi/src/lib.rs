@@ -26,6 +26,7 @@ pub const SEMOE_MOD_CMD: u32 = 1 << 4;
 pub struct SemoeEngine {
     engine: Engine,
     commit: CString,
+    replace: CString,
     marked: CString,
 }
 
@@ -49,6 +50,8 @@ pub struct SemoeOutput {
     pub consumed: bool,
     /// 확정 문자열(UTF-8). 없으면 NULL. 다음 호출 전까지만 유효하다.
     pub commit: *const c_char,
+    /// commit을 넣기 전에 커서 바로 앞에서 지울 문자열(UTF-8). 없으면 NULL. 다음 호출 전까지만 유효하다.
+    pub replace: *const c_char,
     /// 조합 중 문자열(UTF-8). 빈 문자열이면 조합 없음. 다음 호출 전까지만 유효하다.
     pub marked: *const c_char,
     /// 이 시각(ms)에 semoe_on_timer를 불러야 한다. -1이면 타이머 해제.
@@ -62,6 +65,7 @@ impl SemoeOutput {
         Self {
             consumed: false,
             commit: ptr::null(),
+            replace: ptr::null(),
             marked: EMPTY.as_ptr(),
             deadline_ms: -1,
         }
@@ -72,14 +76,19 @@ impl SemoeEngine {
     fn export(&mut self, out: Output) -> SemoeOutput {
         // 엔진 출력에는 NUL이 들어갈 수 없지만, 만약을 대비해 실패 시 빈 문자열로 둔다.
         self.commit = CString::new(out.commit).unwrap_or_default();
+        self.replace = CString::new(out.replace).unwrap_or_default();
         self.marked = CString::new(out.marked).unwrap_or_default();
-        SemoeOutput {
-            consumed: out.consumed,
-            commit: if self.commit.is_empty() {
+        let non_empty = |s: &CString| {
+            if s.is_empty() {
                 ptr::null()
             } else {
-                self.commit.as_ptr()
-            },
+                s.as_ptr()
+            }
+        };
+        SemoeOutput {
+            consumed: out.consumed,
+            commit: non_empty(&self.commit),
+            replace: non_empty(&self.replace),
             marked: self.marked.as_ptr(),
             deadline_ms: out.deadline.map_or(-1, |d| d.min(i64::MAX as u64) as i64),
         }
@@ -108,6 +117,7 @@ pub extern "C" fn semoe_engine_new() -> *mut SemoeEngine {
         Box::into_raw(Box::new(SemoeEngine {
             engine: Engine::new(),
             commit: CString::default(),
+            replace: CString::default(),
             marked: CString::default(),
         }))
     })
@@ -163,7 +173,7 @@ pub extern "C" fn semoe_reset(engine: *mut SemoeEngine) {
 /// 옵션 (알 수 없는 키나 값이면 `false`)
 /// - `mode`: `chord`(한 번에 모아치기) / `sequential`(이어치기·중종성 모아치기). 바꾸면 조합을 버린다.
 /// - `timeout_ms`: 1~1000
-/// - `keyup`, `abbrev`, `compose`, `caps_lock_shift`, `old_hangul`: `on` / `off`
+/// - `keyup`, `abbrev`, `compose`, `compose_inline`, `caps_lock_shift`, `old_hangul`: `on` / `off`
 ///
 /// # Safety
 /// `key`와 `value`는 NUL로 끝나는 유효한 C 문자열이거나 NULL이어야 한다.
@@ -213,6 +223,7 @@ pub unsafe extern "C" fn semoe_set_option(
         "keyup" => flag(value).map(|v| opts.use_keyup = v).is_some(),
         "abbrev" => flag(value).map(|v| opts.abbreviations = v).is_some(),
         "compose" => flag(value).map(|v| opts.compose = v).is_some(),
+        "compose_inline" => flag(value).map(|v| opts.compose_inline = v).is_some(),
         "caps_lock_shift" => flag(value).map(|v| opts.caps_lock_shift = v).is_some(),
         "old_hangul" => flag(value).map(|v| opts.old_hangul = v).is_some(),
         _ => false,
@@ -292,6 +303,30 @@ mod tests {
         assert_eq!(out.deadline_ms, 60);
         let out = semoe_handle_key(e, key(0x0E, SEMOE_KEY_UP, 5));
         assert!(out.commit.is_null()); // keyup off
+        unsafe { semoe_engine_free(e) };
+    }
+
+    #[test]
+    fn inline_compose_through_c_abi() {
+        let e = semoe_engine_new();
+        unsafe {
+            assert!(semoe_set_option(
+                e,
+                c"compose_inline".as_ptr(),
+                c"on".as_ptr()
+            ))
+        };
+        let shift = |k, t| SemoeKeyEvent {
+            modifiers: SEMOE_MOD_SHIFT,
+            ..key(k, SEMOE_KEY_DOWN, t)
+        };
+        let out = semoe_handle_key(e, shift(0x38, 0)); // ?
+        assert_eq!(s(out.commit).as_deref(), Some("?"));
+        assert!(out.replace.is_null());
+        assert_eq!(s(out.marked).as_deref(), Some(""));
+        let out = semoe_handle_key(e, shift(0x09, 10)); // △
+        assert_eq!(s(out.replace).as_deref(), Some("?"));
+        assert_eq!(s(out.commit).as_deref(), Some("까? "));
         unsafe { semoe_engine_free(e) };
     }
 
