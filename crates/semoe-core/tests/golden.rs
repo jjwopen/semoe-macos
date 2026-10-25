@@ -55,7 +55,27 @@ fn vowel_shift_differs_from_left_o() {
     let mut t = Typist::new(Mode::Chord);
     t.engine.options.abbreviations = false;
     chord_str(&mut t, "kvg");
+    assert_eq!(t.finish(), "고ㅡ"); // 약어가 아니면 옛한글로 내지 않고 나눈다
+    t.engine.options.old_hangul = true;
+    chord_str(&mut t, "kvg");
     assert_eq!(t.finish(), "ᄀힼ");
+}
+
+#[test]
+fn old_hangul_clusters_split_outside_old_hangul_mode() {
+    // ㅁ(y) + ㄷ(i)는 원본 결합 규칙으로 옛한글 초성 ꥰ가 된다. 약어가 아니므로 낱자로 낸다.
+    assert_eq!(chord(&["yi"]), "ㅁㄷ");
+    assert_eq!(chord(&["yif"]), "ㅁ다");
+    let mut t = Typist::new(Mode::Sequential);
+    t.seq(&["y", "i"]);
+    assert_eq!(t.marked(), "ㅁㄷ");
+    t.seq(&["f"]);
+    assert_eq!(t.finish(), "ㅁ다");
+    // 옛한글 모드에서는 그대로 낸다.
+    let mut t = Typist::new(Mode::Chord);
+    t.engine.options.old_hangul = true;
+    chord_str(&mut t, "yi");
+    assert_eq!(t.finish(), "ꥰᅠ");
 }
 
 #[test]

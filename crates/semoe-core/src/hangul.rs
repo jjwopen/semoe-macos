@@ -27,6 +27,13 @@ fn modern_jong(c: char) -> Option<u32> {
         .filter(|&i| (1..28).contains(&i))
 }
 
+/// 있는 자모가 모두 현대 자모인가 (현대 한글 음절이나 호환 자모로 보일 수 있는가)
+pub fn is_modern(cho: Option<char>, jung: Option<char>, jong: Option<char>) -> bool {
+    cho.is_none_or(|c| modern_cho(c).is_some())
+        && jung.is_none_or(|c| modern_jung(c).is_some())
+        && jong.is_none_or(|c| modern_jong(c).is_some())
+}
+
 /// 현대 자모 하나를 호환 자모로. 옛한글이면 `None`.
 pub fn compat(c: char) -> Option<char> {
     let pick = |table: &str, i: u32| table.chars().nth(i as usize);

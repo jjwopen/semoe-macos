@@ -38,6 +38,9 @@ pub struct Output {
     /// `false`면 플랫폼 껍데기가 키를 앱에 그대로 넘긴다. `commit`은 그보다 먼저 넣는다.
     pub consumed: bool,
     pub commit: String,
+    /// `commit`을 넣기 전에 커서 바로 앞에서 지울 문자열. 앞서 확정한 기호 조합 중간 문자열이다
+    /// ([`Options::compose_inline`]). 비어 있으면 지우지 않는다.
+    pub replace: String,
     pub marked: String,
     /// 이 시각(ms)에 `on_timer`를 불러야 한다. `None`이면 타이머 해제.
     pub deadline: Option<u64>,
@@ -61,6 +64,10 @@ pub struct Options {
     pub abbreviations: bool,
     /// 기호 조합(원본 `UserCompoTable`): 기호 두 개를 이어 치면 정해진 문자열이 된다 (`※` `△` → `가? `).
     pub compose: bool,
+    /// 기호 조합 중간 문자열을 조합 중 문자열로 두지 않고 바로 확정한다. 조합이 이어지면 [`Output::replace`]로
+    /// 그 문자열을 바꾼다. 조합 중 문자열이 남은 채 Enter 등을 앱에 넘기면 확정한 글자를 잃는 앱이 있어서다
+    /// (grok 웹에서 `?` 뒤 Shift+Enter). 커서 앞 문자열을 바꿀 수 있는 클라이언트에서만 켠다.
+    pub compose_inline: bool,
     /// Caps Lock 순아래(Shift Lock). macOS에서는 Caps Lock을 한/영 전환에 쓰는 일이 많아 기본은 끈다.
     pub caps_lock_shift: bool,
     /// 옛한글 모드: 원본의 Scroll Lock 자리(숫자열 옛한글 등)를 쓰고, 약어를 끄고, Shift+Y·U를 방점으로 쓴다.
@@ -75,6 +82,7 @@ impl Default for Options {
             use_keyup: true,
             abbreviations: true,
             compose: true,
+            compose_inline: false,
             caps_lock_shift: false,
             old_hangul: false,
         }
@@ -124,6 +132,8 @@ pub struct Engine {
     /// 기호 조합 상태와, 그 상태에서 보여 줄 중간 문자열
     compose_state: u32,
     compose_interim: String,
+    /// `compose_interim`을 이미 확정했는가 (`compose_inline`)
+    compose_committed: bool,
 }
 
 impl Default for Engine {
@@ -149,6 +159,7 @@ impl Engine {
             stage: 0,
             compose_state: 0,
             compose_interim: String::new(),
+            compose_committed: false,
         }
     }
 
@@ -283,6 +294,11 @@ impl Engine {
                 }
                 self.output(true, commit)
             }
+            Input::Backspace if self.compose_committed => {
+                // 확정한 중간 문자열은 앱이 지운다.
+                self.clear_compose();
+                self.output(false, commit)
+            }
             Input::Backspace if !self.compose_interim.is_empty() || in_stage => {
                 self.clear_compose();
                 self.output(true, commit)
@@ -306,8 +322,12 @@ impl Engine {
             }
             Input::Char { ch, native } => {
                 commit += &self.take_hangul();
-                if self.options.compose && self.compose(ch, &mut commit) {
-                    return self.output(true, commit);
+                let mut replace = String::new();
+                if self.options.compose && self.compose(ch, &mut commit, &mut replace) {
+                    return Output {
+                        replace,
+                        ..self.output(true, commit)
+                    };
                 }
                 if native {
                     self.output(false, commit)
@@ -329,18 +349,27 @@ impl Engine {
 
     /// 기호 조합에 문자 하나를 넣는다. 조합이 받으면 `true` (확정할 결과는 `commit`에 붙인다).
     /// 지금 상태에 규칙이 없으면 중간 문자열을 확정하고 처음 상태에서 다시 본다.
-    fn compose(&mut self, ch: char, commit: &mut String) -> bool {
+    /// 앞서 확정한 중간 문자열을 바꿔야 하면 그 문자열을 `replace`에 넣는다.
+    fn compose(&mut self, ch: char, commit: &mut String, replace: &mut String) -> bool {
         for attempt in 0..2 {
             if let Some(rule) = self.kb.compose(self.compose_state, ch) {
+                let prev = std::mem::take(&mut self.compose_interim);
+                if std::mem::take(&mut self.compose_committed) {
+                    *replace = prev;
+                }
                 match rule.next {
                     Some(next) => {
                         self.compose_state = next;
                         self.compose_interim =
                             rule.interim.clone().unwrap_or_else(|| ch.to_string());
+                        if self.options.compose_inline {
+                            *commit += &self.compose_interim;
+                            self.compose_committed = true;
+                        }
                     }
                     None => {
                         *commit += rule.result.as_deref().unwrap_or_default();
-                        self.clear_compose();
+                        self.compose_state = 0;
                     }
                 }
                 return true;
@@ -397,10 +426,10 @@ impl Engine {
         if self.chord() {
             Syllable::segments(self.kb, &self.units)
                 .iter()
-                .map(|s| s.render(self.kb, abbr))
+                .map(|s| s.render(self.kb, abbr, self.options.old_hangul))
                 .collect()
         } else {
-            self.syllable.render(self.kb, abbr)
+            self.syllable.render(self.kb, abbr, self.options.old_hangul)
         }
     }
 
@@ -417,16 +446,19 @@ impl Engine {
         s
     }
 
-    /// 기호 조합 중간 문자열을 꺼내고 비운다.
+    /// 기호 조합 중간 문자열을 꺼내고 비운다. 이미 확정했으면 빈 문자열이다.
     fn take_compose(&mut self) -> String {
         let s = std::mem::take(&mut self.compose_interim);
         self.compose_state = 0;
-        s
+        if std::mem::take(&mut self.compose_committed) {
+            String::new()
+        } else {
+            s
+        }
     }
 
     fn clear_compose(&mut self) {
-        self.compose_state = 0;
-        self.compose_interim.clear();
+        self.take_compose();
     }
 
     /// 조합 중인 것을 모두 꺼낸다 (한글은 기호보다 먼저 확정되므로 둘이 함께 있지는 않다).
@@ -440,7 +472,13 @@ impl Engine {
         Output {
             consumed,
             commit,
-            marked: self.render_hangul() + &self.compose_interim,
+            replace: String::new(),
+            marked: self.render_hangul()
+                + if self.compose_committed {
+                    ""
+                } else {
+                    &self.compose_interim
+                },
             deadline: self.deadline,
         }
     }

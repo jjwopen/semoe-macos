@@ -57,7 +57,11 @@ impl Typist {
     }
 
     pub fn apply(&mut self, name: &str, out: Output) {
-        self.text += &out.commit;
+        let kept = self
+            .text
+            .strip_suffix(out.replace.as_str())
+            .unwrap_or_else(|| panic!("{:?} 뒤에 지울 {:?}가 없다", self.text, out.replace));
+        self.text = kept.to_string() + &out.commit;
         if !out.consumed {
             self.passed.push(name.to_string());
         }

@@ -107,6 +107,62 @@ fn backspace_and_escape_cancel_compose() {
     assert_eq!(typed(&["K", "esc"]).finish(), "");
 }
 
+fn typed_inline(keys: &[&str]) -> Typist {
+    let mut t = Typist::new(Mode::Chord);
+    t.engine.options.compose_inline = true;
+    for k in keys {
+        t.down(k);
+        t.t += 5;
+        t.up(k);
+        t.wait(100);
+    }
+    t
+}
+
+#[test]
+fn inline_compose_commits_interim_right_away() {
+    // 조합 중 문자열을 남기지 않는다: Shift+Enter 등을 앱에 넘길 때 앱이 ?를 잃지 않게.
+    let mut t = typed_inline(&["?"]);
+    assert_eq!(t.marked(), "");
+    assert_eq!(t.text, "?");
+    t.down("ret");
+    assert_eq!(t.passed, ["ret"]);
+    assert_eq!(t.last.commit, "");
+    t.down("F"); // 조합은 끝났으므로 △는 따로 들어간다
+    assert_eq!(t.finish(), "?△");
+}
+
+#[test]
+fn inline_compose_replaces_committed_interim() {
+    let mut t = typed_inline(&["?", "F"]); // ? △ → '까? '
+    assert_eq!(t.last.replace, "");
+    assert_eq!(t.finish(), "까? ");
+    let mut t = typed_inline(&["P"]);
+    t.down("!");
+    assert_eq!(t.last.replace, ";");
+    assert_eq!(t.finish(), "한 ");
+    assert_eq!(typed_inline(&[">", ">"]).finish(), ">>");
+    assert_eq!(typed_inline(&["K", "F"]).finish(), "가? ");
+}
+
+#[test]
+fn inline_compose_without_rule_keeps_interim() {
+    assert_eq!(typed_inline(&["P", "k"]).finish(), ";ㄱ");
+    let mut t = typed_inline(&["P", "1"]);
+    assert_eq!(t.finish(), ";");
+    assert_eq!(t.passed, ["1"]);
+}
+
+#[test]
+fn inline_compose_backspace_goes_to_app_and_escape_only_cancels() {
+    let mut t = typed_inline(&["K", "bksp", "F"]);
+    assert_eq!(t.passed, ["bksp"]); // 확정한 ※는 앱이 지운다
+    assert_eq!(t.finish(), "※△"); // 테스트 도구는 앱의 Backspace를 흉내 내지 않는다
+    let mut t = typed_inline(&["K", "esc", "F"]);
+    assert!(t.passed.is_empty());
+    assert_eq!(t.finish(), "※△");
+}
+
 #[test]
 fn compose_can_be_turned_off() {
     let mut t = Typist::new(Mode::Chord);

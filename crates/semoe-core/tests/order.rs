@@ -1,7 +1,8 @@
 //! 순서 무관성 (계획서 Phase 2): 같은 chord는 누르는 순서와 상관없이 같은 결과를 내야 한다.
 //!
 //! 어떤 순서로도 한 음절이 되지 않는 chord(예: 초ㄱ+초ㅁ, 규칙 없음)는 들어온 순서대로 나뉘므로 이
-//! 성질의 대상이 아니다. 한 음절이 되는 chord는 결과까지 같아야 한다.
+//! 성질의 대상이 아니다. 옛한글 모드가 아닐 때 약어가 아닌 옛한글 음절(예: 초ㅁ+초ㄷ → ꥰ)도 낱자로
+//! 나뉘므로 마찬가지다. 한 음절이 되는 chord는 결과까지 같아야 한다.
 
 mod common;
 
@@ -40,10 +41,13 @@ fn permutations(v: &[char]) -> Vec<Vec<char>> {
         .collect()
 }
 
+/// 한 음절이 되면 그 결과. 옛한글이라 낱자로 나뉘면 `None`.
 fn whole(keys: &[char]) -> Option<String> {
     let kb = Keyboard::builtin();
     let units: Vec<Unit> = keys.iter().map(|&c| unit(c)).collect();
-    Syllable::whole(kb, &units).map(|s| s.render(kb, true))
+    let s = Syllable::whole(kb, &units)?;
+    let shown = s.render(kb, true, false);
+    (shown == s.render(kb, true, true)).then_some(shown)
 }
 
 fn typed(keys: &[char]) -> String {
@@ -91,7 +95,11 @@ fn ambiguous_jong_groups_are_fixed() {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(2000))]
+    #![proptest_config(ProptestConfig {
+        // 2~5키 무작위 chord는 옛한글로 나뉘어 대상에서 빠지는 경우가 많다.
+        max_global_rejects: 10_000,
+        ..ProptestConfig::with_cases(2000)
+    })]
 
     /// 키 2~5개를 무작위 두 순서로 눌렀을 때, 한 음절이 되는 chord면 엔진 출력이 같다.
     #[test]

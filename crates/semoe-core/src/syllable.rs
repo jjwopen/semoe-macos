@@ -179,18 +179,68 @@ impl Syllable {
     }
 
     /// 화면에 보일 문자열. `abbreviations`가 켜져 있고 사전에 있으면 약어로 바꿔 보인다.
-    pub fn render(&self, kb: &Keyboard, abbreviations: bool) -> String {
+    ///
+    /// `old_hangul`이 꺼져 있으면 옛한글 자모가 남은 음절(약어가 아닌 `ㅁ`+`ㄷ` → `ꥰ` 등)은 낱자로 나눠
+    /// 보인다(`ㅁㄷ`). 옛한글 겹자모는 약어 키로 많이 쓰여 결합 자체는 막지 않는다. 그대로 내면 채움 문자와
+    /// 함께 첫가끝 꼴이 되어, 옛한글을 그리지 못하는 앱에서는 보이지 않거나 `?`가 된다.
+    pub fn render(&self, kb: &Keyboard, abbreviations: bool, old_hangul: bool) -> String {
         if self.is_empty() {
             return String::new();
         }
-        if abbreviations
-            && self.has(Slot::Cho)
-            && let Some(a) = kb.abbreviation(&self.key(kb))
-        {
+        if let Some(a) = self.abbreviation(kb, abbreviations) {
             return a.to_string();
         }
         let (l, v, t) = self.shown(kb);
+        if !old_hangul && !hangul::is_modern(l, v, t) && self.history.len() > 1 {
+            return self.split(kb, abbreviations);
+        }
         hangul::display(l, v, t)
+    }
+
+    fn abbreviation<'a>(&self, kb: &'a Keyboard, abbreviations: bool) -> Option<&'a str> {
+        (abbreviations && self.has(Slot::Cho))
+            .then(|| kb.abbreviation(&self.key(kb)))
+            .flatten()
+    }
+
+    /// 현대 한글로 보이거나 약어인가
+    fn plain(&self, kb: &Keyboard, abbreviations: bool) -> bool {
+        let (l, v, t) = self.shown(kb);
+        hangul::is_modern(l, v, t) || self.abbreviation(kb, abbreviations).is_some()
+    }
+
+    /// 넣은 순서대로의 낱자
+    fn units(&self) -> Vec<Unit> {
+        let mut next = [0; 3];
+        self.history
+            .iter()
+            .map(|&slot| {
+                let i = index(slot);
+                next[i] += 1;
+                Unit {
+                    slot,
+                    ch: self.cells[i].units[next[i] - 1],
+                }
+            })
+            .collect()
+    }
+
+    /// 낱자를 넣은 순서대로 다시 넣으며, 옛한글이 되는 낱자에서 새 음절을 연다 (`ㅁ ㄷ ㅏ` → `ㅁ다`).
+    fn split(&self, kb: &Keyboard, abbreviations: bool) -> String {
+        let mut out = String::new();
+        let mut cur = Syllable::default();
+        for u in self.units() {
+            let mut next = cur.clone();
+            if next.add(kb, u) && next.plain(kb, abbreviations) {
+                cur = next;
+            } else {
+                // 낱자 하나뿐인 음절은 더 나누지 않으므로 되부름이 끝난다.
+                out += &cur.render(kb, abbreviations, false);
+                cur = Syllable::default();
+                cur.add(kb, u);
+            }
+        }
+        out + &cur.render(kb, abbreviations, false)
     }
 }
 
@@ -209,12 +259,12 @@ mod tests {
         let mut s = Syllable::default();
         assert!(s.add(kb, u(Slot::Cho, 'ᄀ')));
         assert!(s.add(kb, u(Slot::Jong, 'ᆨ')));
-        assert_eq!(s.render(kb, true), "국가");
+        assert_eq!(s.render(kb, true, false), "국가");
         assert!(s.add(kb, u(Slot::Jong, 'ᆼ')));
-        assert_eq!(s.render(kb, true), "공격");
+        assert_eq!(s.render(kb, true, false), "공격");
         assert!(s.undo(kb));
-        assert_eq!(s.render(kb, true), "국가");
-        assert_eq!(s.render(kb, false), "ㄱㄱ");
+        assert_eq!(s.render(kb, true, false), "국가");
+        assert_eq!(s.render(kb, false, false), "ㄱㄱ");
         assert_eq!(s.key(kb), "ᄀᅠᆨ"); // 약어 사전 키는 그대로 첫가끝 꼴
     }
 
@@ -237,7 +287,7 @@ mod tests {
         {
             let units: Vec<_> = order.iter().map(|&c| u(Slot::Jung, c)).collect();
             let s = Syllable::whole(kb, &units).unwrap_or_else(|| panic!("{order:?}"));
-            assert_eq!(s.render(kb, false), "ㅞ", "{order:?}");
+            assert_eq!(s.render(kb, false, false), "ㅞ", "{order:?}");
         }
         // 한 낱자씩 넣으면 ㅣ, ㅓ에서 막힌다 (이어치기는 이 방식)
         let mut s = Syllable::default();

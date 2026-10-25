@@ -65,10 +65,9 @@ final class SemoeInputController: IMKInputController {
             return out.consumed
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             // 커서를 옮기기 전에 조합을 확정한다. 이벤트는 앱에 그대로 넘긴다.
-            if bridge.hasMarked {
-                EventLog.shared.note("mouse", bundleID: bundleID)
-                apply(engine.flush(), to: client)
-            }
+            // 조합 중 문자열이 없어도 확정해 둔 기호 조합 상태가 있을 수 있으므로 늘 확정한다.
+            if bridge.hasMarked { EventLog.shared.note("mouse", bundleID: bundleID) }
+            apply(engine.flush(), to: client)
             return false
         default:
             EventLog.shared.key(event, bundleID: bundleID, consumed: false)
@@ -98,6 +97,11 @@ final class SemoeInputController: IMKInputController {
 
     @discardableResult
     private func feed(_ event: NSEvent, up: Bool, timestamp: TimeInterval, client: IMKTextInput) -> EngineHandle.Output {
+        if !up {
+            // 기호 조합 중간 문자열은 바꿀 수 있으면 바로 확정한다. 조합 중 문자열이 남은 채 Shift+Enter 등을
+            // 넘기면 확정한 글자를 잃는 앱이 있다 (grok 웹에서 `?`).
+            engine.setOption("compose_inline", ClientBridge.canReplace(client) ? "on" : "off")
+        }
         let out = engine.handleKey(
             keyCode: event.keyCode,
             up: up,
