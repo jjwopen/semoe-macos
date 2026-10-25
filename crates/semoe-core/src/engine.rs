@@ -426,10 +426,10 @@ impl Engine {
         if self.chord() {
             Syllable::segments(self.kb, &self.units)
                 .iter()
-                .map(|s| s.render(self.kb, abbr))
+                .map(|s| s.render(self.kb, abbr, self.options.old_hangul))
                 .collect()
         } else {
-            self.syllable.render(self.kb, abbr)
+            self.syllable.render(self.kb, abbr, self.options.old_hangul)
         }
     }
 
