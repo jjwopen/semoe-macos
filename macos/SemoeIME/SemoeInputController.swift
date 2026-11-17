@@ -14,6 +14,8 @@ final class SemoeInputController: IMKInputController {
     /// `client()`는 컨트롤러가 처음 받은 클라이언트라, 입력기를 다시 띄운 직후에는 실제로 키를 보내는
     /// 세션과 다를 수 있다. 그쪽으로 넣은 확정 문자열은 앱에 닿지 않았다 (Phase 3, Safari `ㅣㅇ` → `ㅣ`).
     private var currentClient: IMKTextInput?
+    /// 마지막으로 확인한 탭 사용 가능 여부. 보안 입력이 바뀌는 순간을 알아채는 데 쓴다.
+    private var lastTapUsable = KeyTap.shared.isUsable
 
     private var activeClient: IMKTextInput? {
         currentClient ?? client()
@@ -41,7 +43,14 @@ final class SemoeInputController: IMKInputController {
         guard let event, let client = sender as? IMKTextInput else { return false }
         currentClient = client
         let bundleID = client.bundleIdentifier() ?? "?"
-        let tap = KeyTap.shared.isRunning
+        let tap = KeyTap.shared.isUsable
+        if tap != lastTapUsable {
+            // 보안 입력이 켜지거나 꺼졌다. 눌려 있던 키의 keyUp은 놓쳤을 수 있으므로 조합을 확정하고,
+            // 엔진의 keyup 옵션을 바꾼다 (보안 입력 중에는 타이머 전용).
+            lastTapUsable = tap
+            apply(engine.flush(), to: client)
+            EventLog.shared.note("secure-input", bundleID: bundleID, "secure=\(tap ? "off" : "on") " + Preferences.apply(to: engine))
+        }
         switch event.type {
         case .keyDown where tap:
             // 키를 실제로 받는 컨트롤러가 탭 이벤트도 받는다. 활성화 순서로 정하면, 다른 세션(예: 시스템
@@ -120,6 +129,7 @@ final class SemoeInputController: IMKInputController {
         currentClient = sender as? IMKTextInput
         KeyTap.shared.target = self
         KeyTap.shared.start()
+        lastTapUsable = KeyTap.shared.isUsable
         EventLog.shared.note("activate", bundleID: Self.bundleID(sender), Preferences.apply(to: engine))
     }
 
@@ -198,7 +208,9 @@ final class SemoeInputController: IMKInputController {
             item.state = on ? .on : .off
             menu.addItem(item)
         }
-        if !KeyTap.shared.isRunning {
+        if KeyTap.isSecureInput {
+            menu.addItem(NSMenuItem(title: "보안 입력 중: 키뗌 감지 꺼짐 (타이머 전용)", action: nil, keyEquivalent: ""))
+        } else if !KeyTap.shared.isRunning {
             menu.addItem(NSMenuItem(title: "키뗌 감지 꺼짐 (입력 모니터링 권한 필요)", action: nil, keyEquivalent: ""))
         }
         menu.addItem(NSMenuItem(title: "환경설정…", action: #selector(showPreferences(_:)), keyEquivalent: ""))

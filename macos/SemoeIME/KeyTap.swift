@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 /// 물리 키 이벤트 스트림 (계획서 3.1 방안 B).
 ///
@@ -38,6 +39,12 @@ final class KeyTap {
     var isRunning: Bool { lock.sync { tap }.map { CGEvent.tapIsEnabled(tap: $0) } ?? false }
 
     static var hasPermission: Bool { CGPreflightListenEventAccess() }
+
+    /// Secure Keyboard Entry(보안 입력)가 켜져 있는지. 켜져 있으면 탭은 켜진 것처럼 보여도 키 이벤트를 받지 못한다.
+    static var isSecureInput: Bool { IsSecureEventInputEnabled() }
+
+    /// 탭 기록을 믿고 쓸 수 있는지. 보안 입력 중에는 false이고, 이때는 타이머 전용으로 동작한다.
+    var isUsable: Bool { isRunning && !Self.isSecureInput }
 
     /// 권한이 있으면 탭 스레드를 띄운다. 이미 돌고 있으면 아무것도 하지 않는다.
     @discardableResult

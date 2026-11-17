@@ -87,8 +87,8 @@ enum Preferences {
     /// 엔진에 반영한다. 반영한 내용을 로그용 문자열로 돌려준다.
     @discardableResult
     static func apply(to engine: EngineHandle) -> String {
-        let tap = KeyTap.shared.isRunning
-        // 키뗌은 탭이 돌고 있을 때만 믿을 수 있다.
+        let tap = KeyTap.shared.isUsable
+        // 키뗌은 탭이 돌고 있고 보안 입력이 꺼져 있을 때만 믿을 수 있다.
         let keyUp = useKeyUp && tap
         engine.setOption("mode", mode.rawValue)
         engine.setOption("timeout_ms", String(timeoutMs))
