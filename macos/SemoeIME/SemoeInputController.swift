@@ -49,7 +49,7 @@ final class SemoeInputController: IMKInputController {
             // 엔진의 keyup 옵션을 바꾼다 (보안 입력 중에는 타이머 전용).
             lastTapUsable = tap
             apply(engine.flush(), to: client)
-            EventLog.shared.note("secure-input", bundleID: bundleID, tap ? "off" : "on", Preferences.apply(to: engine))
+            EventLog.shared.note("secure-input", bundleID: bundleID, "secure=\(tap ? "off" : "on") " + Preferences.apply(to: engine))
         }
         switch event.type {
         case .keyDown where tap:
